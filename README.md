@@ -2,6 +2,10 @@
 
 Traduce `panicprk_main.elf` (estratto dalla ROM, vedi `../ROM_MAP.md`) in C++ nativo.
 Non contiene codice o dati del gioco: si genera dalla **tua** ROM.
+Progetto non ufficiale, non affiliato a Bandai Namco. Licenza: BSD-3-Clause (vedi `LICENSE`; parti derivate da MAME).
+
+Il logo e lo sfondo del menu (`platform/ui/logo.png`, `platform/ui/background.png`) non sono nel repository:
+sono facoltativi e, se li hai, vanno messi a mano in `platform/ui/`.
 
 ## Pipeline
 
