@@ -9,12 +9,16 @@ Not affiliated with Bandai Namco. License: BSD-3-Clause (parts derived from MAME
 
 ## 1. Generate the code (all platforms)
 
-Put `panicprk_main.elf` and `main_r4650_BE_4MB.bin` (extracted from your ROM set) in the project folder, then:
+Put your Panic Park ROMs (the MAME `panicprk` set, unzipped) in a `panicprkrom/` folder inside the project, then:
 
 ```sh
+python3 tools/extract_rom.py panicprkrom     # -> panicprk_main.elf + main_r4650_BE_4MB.bin
 pip install pyelftools
 python3 mips2cpp.py --elf panicprk_main.elf --funcs functions.csv --out gen_full
 ```
+
+`extract_rom.py` joins the two halves of the main program ROM (`pnp2vera.ic2` + `pnp2vera.ic1`) into
+`main_r4650_BE_4MB.bin` and takes the game's executable (`panicprk_main.elf`) out of it.
 
 ## 2. Build
 
