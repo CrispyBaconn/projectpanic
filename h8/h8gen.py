@@ -1,0 +1,194 @@
+#!/usr/bin/env python3
+"""
+h8gen.py - genera l'interprete H8/300H (H8/3002) dal microcodice di MAME.
+
+Input : h8.lst, h8.cpp  (MAME, src/devices/cpu/h8/, licenza BSD-3-Clause, (c) Olivier Galibert e altri)
+Output: h8core.h        classe H8 con decodifica, istruzioni e funzioni aritmetiche
+
+Le istruzioni sono i corpi del file .lst con le macro espanse, quindi flag e semantica sono quelli di MAME.
+Si usano le voci con tipo vuoto (comuni) o 'h' (H8/300H). Le voci speciali (reset, irq, dma, dtc) sono
+scritte a mano in h8cpu.h.
+"""
+import re, sys
+
+LST = sys.argv[1] if len(sys.argv) > 1 else 'h8.lst'
+CPP = sys.argv[2] if len(sys.argv) > 2 else 'h8.cpp'
+OUT = sys.argv[3] if len(sys.argv) > 3 else 'h8core.h'
+TYPES = tuple(['']) + tuple(sys.argv[4]) if len(sys.argv) > 4 else ('', 'h')   # tipi di voci: '' comuni, 'h' = H8/300H, 'o' = H8/300
+CLS = sys.argv[5] if len(sys.argv) > 5 else 'H8'
+COMMON = (sys.argv[6] != '0') if len(sys.argv) > 6 else True       # emette typedef e H8Bus (una sola volta per programma)
+
+HDR = re.compile(r'^([0-9a-fA-F]+)\s+([0-9a-fA-F]+)\s+(\d+)\s+(\S+)\s+(\S+)\s+(\S+)(?:\s+(\S+))?\s*$')
+macros, ents = {}, []
+cur = None; mcur = None
+for line in open(LST):
+    line = line.rstrip('\n')
+    if line.startswith('#'): continue
+    if not line.strip(): continue
+    if line.startswith((' ', '\t')):
+        target = macros[mcur] if mcur else (cur if cur is not None else None)
+        if target is None: continue
+        target['body'].append(line)
+        continue
+    toks = line.split()
+    if toks[0] == 'macro':
+        mcur = toks[1]; macros[mcur] = dict(params=toks[2:], body=[]); cur = None; continue
+    m = HDR.match(line)
+    if m:
+        cur = dict(pat=m.group(1), mask=m.group(2), skip=int(m.group(3)), mn=m.group(4), a=m.group(5), b=m.group(6),
+                   ty=m.group(7) or '', body=[]); ents.append(cur); mcur = None
+    else:                                    # voci speciali (reset, irq, dma ...)
+        cur = dict(special=True, body=[]); mcur = None
+
+
+def expand(lines, depth=0):
+    """Espande le macro (stessa logica di Macro.apply in h8make.py), ricorsivamente."""
+    out = []
+    for ln in lines:
+        toks = ln.split()
+        if toks and toks[0] in macros and depth < 8:
+            mac = macros[toks[0]]; params = mac['params']
+            vals = []
+            if len(params) > 1:
+                for i in range(len(params) - 1): vals.append(toks[i + 1])
+            vals.append(' '.join(toks[len(params):]) if len(params) >= 1 else '')
+            if len(params) == 0: vals = []
+            body = []
+            for b in mac['body']:
+                for j, p in enumerate(params): b = b.replace(p, vals[j])
+                body.append(b)
+            out += expand(body, depth + 1)
+        else:
+            out.append(ln)
+    return out
+
+
+def hexsplit(s): return [int(s[i:i + 2], 16) for i in range(0, len(s), 2)]
+
+
+sel = [e for e in ents if not e.get('special') and e['ty'] in TYPES]
+funcs = []; table = []
+for n, e in enumerate(sel):
+    v = hexsplit(e['pat']); k = hexsplit(e['mask'])
+    nw = len(v) // 2
+    words = [(v[2 * i] << 8) | v[2 * i + 1] for i in range(nw)]
+    masks = [(k[2 * i] << 8) | k[2 * i + 1] for i in range(nw)]
+    a, b = e['a'], e['b']; skip = e['skip']
+    extra = 0
+    if (a == 'abs16' or b == 'abs16' or a in ('abs16e', 'abs22e', 'abs24e')) and skip == 0: extra += 1
+    if (a == 'abs32' or b == 'abs32') and skip == 0: extra += 2
+    if a in ('imm16', 'rel16', 'r16d16h', 'r32d16h') or b in ('r16d16h', 'r32d16h'): extra += 1
+    if a in ('imm32', 'r32d32hh') or b == 'r32d32hh': extra += 2
+    body = expand(e['body'])
+    txt = '\n'.join(body)
+    # SLEEP: l'attesa di un interrupt diventa uno stato della CPU
+    txt = re.sub(r'while\(!m_irq_vector\)\s*\{\s*eat-all-cycles;\s*\}', 'if(!m_irq_vector) { m_sleeping = true; return; }', txt)
+    txt = txt.replace('eat-all-cycles;', '')
+    desc = f"{e['mn']} {e['a']} {e['b']}".strip()
+    funcs.append(f"\t// {desc}   [{e['pat']}/{e['mask']} skip={skip} extra={extra}]\n\tvoid op_{n}() {{\n{txt}\n\t}}\n")
+    table.append((words, masks, skip, extra, n, desc))
+
+# ---- funzioni di supporto da h8.cpp (do_*, set_nz*), trasformate in metodi in-class
+cpp = open(CPP).read()
+helpers = []
+for m in re.finditer(r'^(u8|u16|u32|void) h8_device::(do_\w+|set_nz\w*)\(([^)]*)\)\s*\n\{', cpp, re.M):
+    start = m.start(); i = cpp.index('{', m.end() - 1); depth = 0; j = i
+    while True:
+        if cpp[j] == '{': depth += 1
+        elif cpp[j] == '}':
+            depth -= 1
+            if depth == 0: break
+        j += 1
+    helpers.append(cpp[start:j + 1].replace('h8_device::', ''))
+
+out = []
+out.append('''// GENERATO DA h8gen.py - NON MODIFICARE A MANO.
+// Interprete H8/300H derivato dal microcodice di MAME (src/devices/cpu/h8/h8.lst, h8.cpp).
+// license:BSD-3-Clause   copyright-holders: Olivier Galibert e altri
+#pragma once
+#include <cstdint>
+#include <cstring>
+#include <cstdlib>
+#include <vector>
+typedef uint8_t u8; typedef uint16_t u16; typedef uint32_t u32; typedef uint64_t u64;
+typedef int8_t s8; typedef int16_t s16; typedef int32_t s32;
+
+struct H8Bus {                       // bus esterno dell'H8 (24 bit, big endian)
+    virtual uint8_t  r8 (uint32_t a) = 0;
+    virtual uint16_t r16(uint32_t a) = 0;
+    virtual void     w8 (uint32_t a, uint8_t v) = 0;
+    virtual void     w16(uint32_t a, uint16_t v) = 0;
+    virtual ~H8Bus() {}
+};
+
+class H8 {
+public:
+    enum { F_I = 0x80, F_UI = 0x40, F_H = 0x20, F_U = 0x10, F_N = 0x08, F_Z = 0x04, F_V = 0x02, F_C = 0x01 };
+    enum { SUSPEND_REASON_CLOCK = 0 };
+    enum { EXR_I = 7, EXR_NC = 0x78, EXR_T = 0x80 };   // solo H8S (non usati sull'H8/300H)
+    H8Bus* bus = nullptr;
+    uint16_t m_R[16] = {0};               // Rn (0-7), En (8-15)
+    uint32_t m_PC = 0, m_NPC = 0, m_PPC = 0, m_TMP1 = 0, m_TMP2 = 0;
+    uint16_t m_PIR = 0, m_IR[8] = {0};
+    uint8_t  m_CCR = 0;
+    uint32_t m_EXR = 0;
+    bool m_has_hc = true, m_has_mac = false, m_mode_advanced = true, m_sleeping = false, m_standby_pending = false;
+    int  m_irq_vector = 0, m_taken_irq_vector = 0;
+    uint64_t m_cycles = 0;                // stati (cicli di clock) consumati
+    uint64_t m_standby_time = 0;
+    struct { void operator()(int) {} } m_standby_cb;
+    uint8_t m_syscr = 0x09;
+    void (*on_update_irq_filter)(void*) = nullptr; void* user = nullptr;
+
+    // ---- accesso ai registri
+    inline void r8_w(int reg, u8 val) { if(reg & 8) m_R[reg & 7] = (m_R[reg & 7] & 0xff00) | val; else m_R[reg & 7] = (m_R[reg & 7] & 0xff) | (val << 8); }
+    inline u8  r8_r(int reg) { return (reg & 8) ? (u8)m_R[reg & 7] : (u8)(m_R[reg & 7] >> 8); }
+    inline void r16_w(int reg, u16 val) { m_R[reg & 0xf] = val; }
+    inline u16  r16_r(int reg) { return m_R[reg & 0xf]; }
+    inline void r32_w(int reg, u32 val) { m_R[reg & 7] = val; m_R[(reg & 7) | 8] = val >> 16; }
+    inline u32  r32_r(int reg) const { return m_R[reg & 7] | (m_R[(reg & 7) | 8] << 16); }
+
+    // ---- bus
+    inline u16 read16i(u32 adr) { m_cycles += 2; return bus->r16(adr & 0xfffffe); }
+    inline u8  read8(u32 adr)   { m_cycles += 2; return bus->r8(adr & 0xffffff); }
+    inline void write8(u32 adr, u8 d)   { m_cycles += 2; bus->w8(adr & 0xffffff, d); }
+    inline u16 read16(u32 adr)  { m_cycles += 2; return bus->r16(adr & 0xfffffe); }
+    inline void write16(u32 adr, u16 d) { m_cycles += 2; bus->w16(adr & 0xfffffe, d); }
+    inline void internal(int c) { m_cycles += c + 1; }
+
+    // ---- pipeline / controllo (stessa semantica di MAME)
+    inline void prefetch_done()       { m_IR[0] = m_PIR; }
+    inline void prefetch_done_noirq() { m_IR[0] = m_PIR; }
+    inline void prefetch_done_notrace() { m_IR[0] = m_PIR; }
+    inline void prefetch_switch(u32 pc, u16 ir) { m_NPC = pc & 0xffffff; m_PC = pc + 2; m_PIR = ir; }
+    inline void update_irq_filter() { if(on_update_irq_filter) on_update_irq_filter(user); }
+    inline void irq_setup() { if(m_syscr & 0x08) m_CCR |= F_I; else m_CCR |= F_I | F_UI; }
+    void (*on_irq_taken)(void*, int) = nullptr;
+    inline void interrupt_taken() { if(on_irq_taken) on_irq_taken(user, m_taken_irq_vector); }
+    inline void debugger_exception_hook(int) {}
+    inline bool exr_in_stack() const { return false; }
+    inline int  trapa_setup() { if(m_syscr & 0x08) m_CCR |= F_I; else m_CCR |= F_I | F_UI; return 8; }
+    inline int  trace_setup() { return 0; }
+    inline uint64_t total_cycles() const { return m_cycles; }
+    inline void notify_standby(int) {}
+    inline void suspend(int, bool) {}
+    inline void illegal() { m_illegal = true; }
+    bool m_illegal = false;
+
+    // ---- funzioni aritmetiche e di flag (da MAME)
+''')
+for h in helpers: out.append('    ' + h.replace('\n', '\n    ') + '\n')
+out.append('\n    // ---- istruzioni (corpi del microcodice)\n')
+out += funcs
+out.append('\n    typedef void (H8::*OpFn)();\n    struct OpInfo { uint16_t w[3], m[3]; uint8_t nw, skip, extra; OpFn fn; const char* name; };\n    static const OpInfo* ops(int& n) {\n        static const OpInfo T[] = {\n')
+for words, masks, skip, extra, n, desc in table:
+    w = (words + [0, 0, 0])[:3]; m = (masks + [0, 0, 0])[:3]
+    out.append('            { {0x%04x,0x%04x,0x%04x}, {0x%04x,0x%04x,0x%04x}, %d, %d, %d, &H8::op_%d, "%s" },\n' % (w[0], w[1], w[2], m[0], m[1], m[2], len(words), skip, extra, n, desc))
+out.append('        };\n        n = sizeof(T) / sizeof(T[0]); return T;\n    }\n};\n')
+txt_out = ''.join(out)
+if not COMMON:                                    # typedef e H8Bus sono nel core principale
+    a = txt_out.index('typedef uint8_t u8;'); b = txt_out.index('class H8 {')
+    txt_out = txt_out[:a] + txt_out[b:]
+txt_out = txt_out.replace('class H8 {', 'class %s {' % CLS).replace('H8::', CLS + '::')
+open(OUT, 'w').write(txt_out)
+print(f'{len(table)} istruzioni, {len(helpers)} funzioni di supporto -> {OUT}')

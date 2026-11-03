@@ -1,0 +1,26 @@
+; Panic Park (3DS): vertex shader del 3D (platform/pica3d.h). I vertici arrivano gia' in coordinate omogenee
+; (x*w, y*w, z*w, w in pixel dello schermo superiore): basta la proiezione ortogonale ruotata dello schermo.
+; Il colore arriva in byte 0..255 (luce del poligono gia' divisa per 4: il combinatore moltiplica per 4).
+
+.fvec projection[4]
+
+.constf myconst(0.0, 1.0, 0.00392156862745, 0.0)
+.alias  inv255 myconst.zzzz
+
+.out outpos position
+.out outtc0 texcoord0
+.out outclr color
+
+.alias inpos v0
+.alias intex v1
+.alias inclr v2
+
+.proc main
+	dp4 outpos.x, projection[0], inpos
+	dp4 outpos.y, projection[1], inpos
+	dp4 outpos.z, projection[2], inpos
+	dp4 outpos.w, projection[3], inpos
+	mov outtc0, intex
+	mul outclr, inv255, inclr
+	end
+.end

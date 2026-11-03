@@ -1,0 +1,259 @@
+#!/usr/bin/env python3
+"""Test differenziale a livello di istruzione: C++ generato da mips2cpp.py vs Unicorn (QEMU MIPS32 24KF, BE).
+Uso: difftest_unit.py [n_test] [seed]"""
+import os, random, struct, subprocess, sys, math, collections
+HERE = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, os.path.join(HERE, '..'))
+import mips2cpp as m
+from unicorn import *
+from unicorn.mips_const import *
+
+NT = int(sys.argv[1]) if len(sys.argv) > 1 else 1500
+SEED = int(sys.argv[2]) if len(sys.argv) > 2 else 1
+rnd = random.Random(SEED)
+
+SCR, SCR_LEN = 0x00300000, 4096
+CODE0, CODE_STRIDE = 0x00010000, 0x400
+END = 0x00008000          # indirizzo sentinella (ra): contiene solo nop
+DST = list(range(1, 16)) + list(range(20, 31))      # niente r0, puntatori 16-19, r31
+PTR = [16, 17, 18, 19]
+
+# ------------------------------------------------------------------ assembler
+def R(f, rs=0, rt=0, rd=0, sa=0): return (rs << 21) | (rt << 16) | (rd << 11) | (sa << 6) | f
+def I(op, rs, rt, imm): return (op << 26) | (rs << 21) | (rt << 16) | (imm & 0xffff)
+def C1(fmt, ft, fs, fd, f): return (17 << 26) | (fmt << 21) | (ft << 16) | (fs << 11) | (fd << 6) | f
+def src(): return rnd.randrange(32)
+def dst(): return rnd.choice(DST)
+def fr(): return rnd.randrange(32)
+def simm(): return rnd.choice([0, 1, -1, 2, 0x7fff, -0x8000, rnd.randrange(-0x8000, 0x8000)])
+
+def gen_alu():
+    k = rnd.random()
+    if k < 0.40:
+        f = rnd.choice([33, 35, 36, 37, 38, 39, 42, 43, 4, 6, 7])   # niente add/sub (trap overflow, il gioco non li usa)
+        return R(f, src(), src(), dst())
+    if k < 0.55:
+        return R(rnd.choice([0, 2, 3]), 0, src(), dst(), rnd.randrange(32))
+    if k < 0.75:
+        op = rnd.choice([9, 10, 11])        # niente addi/daddiu
+        return I(op, src(), dst(), simm())
+    if k < 0.85:
+        return I(rnd.choice([12, 13, 14]), src(), dst(), rnd.randrange(0x10000))
+    if k < 0.90:
+        return I(15, 0, dst(), rnd.randrange(0x10000))
+    return (28 << 26) | (src() << 21) | (src() << 16) | (dst() << 11) | 2           # mul
+
+def gen_hilo():
+    k = rnd.randrange(9)
+    if k == 0: return R(24, src(), src())
+    if k == 1: return R(25, src(), src())
+    if k == 2: return R(26, src(), rnd.randrange(1, 32))
+    if k == 3: return R(27, src(), rnd.randrange(1, 32))
+    if k == 4: return (28 << 26) | (src() << 21) | (src() << 16)                    # madd
+    if k == 5: return R(17, src())                                                  # mthi
+    if k == 6: return R(19, src())                                                  # mtlo
+    if k == 7: return R(16, 0, 0, dst())                                            # mfhi
+    return R(18, 0, 0, dst())                                                       # mflo
+
+def gen_mem():
+    base = rnd.choice(PTR)
+    op = rnd.choice([32, 33, 34, 35, 36, 37, 38, 40, 41, 42, 43, 46, 49, 57])
+    al = {33: 2, 37: 2, 41: 2, 35: 4, 43: 4, 49: 4, 57: 4}.get(op, 1)
+    off = rnd.randrange(-0x200, 0x200) & ~(al - 1)
+    rt = fr() if op in (49, 57) else dst() if op < 40 else src()
+    return I(op, base, rt, off)
+
+def gen_fpu():
+    k = rnd.randrange(13)
+    if k == 0: return C1(16, fr(), fr(), fr(), 0)       # add.s
+    if k == 1: return C1(16, fr(), fr(), fr(), 1)       # sub.s
+    if k == 2: return C1(16, fr(), fr(), fr(), 2)       # mul.s
+    if k == 3: return C1(16, fr(), fr(), fr(), 3)       # div.s
+    if k == 4: return C1(16, 0, fr(), fr(), 4)          # sqrt.s
+    if k == 5: return C1(16, 0, fr(), fr(), 5)          # abs.s
+    if k == 6: return C1(16, 0, fr(), fr(), 6)          # mov.s
+    if k == 7: return C1(16, 0, fr(), fr(), 7)          # neg.s
+    if k == 8: return C1(16, 0, fr(), fr(), 13)         # trunc.w.s
+    if k == 9: return C1(20, 0, fr(), fr(), 32)         # cvt.s.w
+    if k == 10: return C1(16, fr(), fr(), 0, rnd.choice([0x32, 0x3c, 0x3e]))   # c.eq/lt/le.s
+    if k == 11: return (17 << 26) | (0 << 21) | (dst() << 16) | (fr() << 11)    # mfc1
+    if k == 12: return (17 << 26) | (4 << 21) | (src() << 16) | (fr() << 11)    # mtc1
+    return (17 << 26) | (2 << 21) | (dst() << 16) | (31 << 11)                  # cfc1 fcsr
+
+def gen_any():
+    k = rnd.random()
+    if k < 0.40: return gen_alu()
+    if k < 0.55: return gen_hilo()
+    if k < 0.75: return gen_mem()
+    return gen_fpu()
+
+def prog_straight():
+    w = [gen_any() for _ in range(rnd.randrange(4, 11))]
+    return w + [R(8, 31), 0]
+
+def prog_branch():
+    kind = rnd.randrange(3)
+    if kind == 0:     # beq/bne/blez/bgtz e likely
+        op = rnd.choice([4, 5, 6, 7, 20, 21, 22, 23])
+        rs, rt = src(), src()
+        if op in (6, 7, 22, 23): rt = 0
+        br = I(op, rs, rt, 3)
+    elif kind == 1:   # regimm
+        br = I(1, src(), rnd.choice([0, 1, 2, 3]), 3)
+    else:             # c.cond + bc1
+        cmp_ = C1(16, fr(), fr(), 0, rnd.choice([0x32, 0x3c, 0x3e]))
+        br = (17 << 26) | (8 << 21) | (rnd.choice([0, 1, 2, 3]) << 16) | 3
+        pre = [cmp_, gen_alu()]
+        w = pre + [br, gen_alu(), gen_alu(), gen_alu(), gen_alu(), gen_alu(), R(8, 31), 0]
+        # il branch e' all'indice 2: offset deve puntare all'indice 6 -> imm = 6 - (2+1) = 3 ok
+        return w
+    return [br, gen_alu(), gen_alu(), gen_alu(), gen_alu(), gen_alu(), R(8, 31), 0]
+
+def prog_hilo_seq():
+    return [gen_hilo() if rnd.random() < 0.6 else gen_alu() for _ in range(rnd.randrange(4, 9))] + [R(8, 31), 0]
+
+PROGS = []
+for i in range(NT):
+    k = rnd.random()
+    PROGS.append(prog_straight() if k < 0.45 else prog_branch() if k < 0.80 else prog_hilo_seq())
+
+# ------------------------------------------------------------------ stato iniziale
+def rand_gpr():
+    k = rnd.random()
+    if k < 0.35: return rnd.randrange(-100, 100) & 0xffffffff
+    if k < 0.55: return rnd.choice([0, 1, 0xffffffff, 0x7fffffff, 0x80000000, 0xffff, 0x8000, 0x7fff])
+    return rnd.getrandbits(32)
+
+def rand_float_bits():
+    if rnd.random() < 0.8:
+        v = rnd.choice([-1, 1]) * rnd.uniform(0.01, 1000.0)
+        return struct.unpack('>I', struct.pack('>f', v))[0]
+    return rnd.getrandbits(32)
+
+CASES = []
+for i in range(NT):
+    r = [0] + [rand_gpr() for _ in range(31)]
+    for p in PTR: r[p] = 0x00300400 + 4 * rnd.randrange(0, 0x40)
+    r[31] = END
+    CASES.append(dict(r=r, hi=rand_gpr(), lo=rand_gpr(), f=[rand_float_bits() for _ in range(32)],
+                      fcsr=0, mem=bytes(rnd.getrandbits(8) for _ in range(SCR_LEN))))
+
+# ------------------------------------------------------------------ genera C++
+words = {}
+entries = []
+for i, p in enumerate(PROGS):
+    base = CODE0 + i * CODE_STRIDE
+    entries.append(base)
+    for j, w in enumerate(p): words[base + 4 * j] = w
+tr = m.Translator(lambda a: words.get(a, 0), 0, CODE0 + NT * CODE_STRIDE + 0x1000, entries)
+lines = ['#include "runtime.h"', '#pragma GCC diagnostic ignored "-Wunused-label"']
+for e in entries: lines.append(f'void {m.fname(e)}(CPU* c);')
+for i, p in enumerate(PROGS):
+    base = CODE0 + i * CODE_STRIDE
+    lines += tr.emit_function(base, base + 4 * len(p))
+lines.append('void (*g_tests[])(CPU*) = {' + ','.join(m.fname(e) for e in entries) + '};')
+lines.append(f'const int g_ntests = {NT};')
+os.makedirs(os.path.join(HERE, 'build'), exist_ok=True)
+open(os.path.join(HERE, 'build', 'tests.cpp'), 'w').write('\n'.join(lines) + '\n')
+if tr.warn: print('WARN', tr.warn[:5])
+
+exe = os.path.join(HERE, 'build', 'harness')
+cc = ['g++', '-std=c++17', '-O1', '-DRECOMP_TEST', '-ffp-contract=off', '-fno-fast-math', '-I' + os.path.join(HERE, '..'), '-w',
+      os.path.join(HERE, 'harness.cpp'), os.path.join(HERE, 'build', 'tests.cpp'), '-o', exe]
+r = subprocess.run(cc, capture_output=True, text=True)
+if r.returncode: print(r.stderr[:3000]); sys.exit(1)
+
+# ------------------------------------------------------------------ esegui C++
+with open(os.path.join(HERE, 'build', 'cases.bin'), 'wb') as f:
+    f.write(struct.pack('<I', NT))
+    for i, c in enumerate(CASES):
+        f.write(struct.pack('<I', i) + struct.pack('<32I', *c['r']) + struct.pack('<II', c['hi'], c['lo']) +
+                struct.pack('<32I', *c['f']) + struct.pack('<I', c['fcsr']) + c['mem'])
+subprocess.run([exe, os.path.join(HERE, 'build', 'cases.bin'), os.path.join(HERE, 'build', 'results.bin')], check=True)
+RS = 4 + 128 + 8 + 128 + 4 + SCR_LEN
+raw = open(os.path.join(HERE, 'build', 'results.bin'), 'rb').read()
+cpp = []
+for i in range(NT):
+    b = raw[i * RS:(i + 1) * RS]
+    st = struct.unpack('<I', b[:4])[0]
+    r_ = struct.unpack('<32I', b[4:132]); hi, lo = struct.unpack('<II', b[132:140])
+    f_ = struct.unpack('<32I', b[140:268]); fcsr = struct.unpack('<I', b[268:272])[0]
+    cpp.append(dict(st=st, r=r_, hi=hi, lo=lo, f=f_, fcsr=fcsr, mem=b[272:]))
+
+# ------------------------------------------------------------------ Unicorn
+uc = Uc(UC_ARCH_MIPS, UC_MODE_MIPS32 | UC_MODE_BIG_ENDIAN)
+uc.ctl_set_cpu_model(UC_CPU_MIPS32_24KF)
+uc.mem_map(0, 0x400000)
+GPR = [getattr(sys.modules['unicorn.mips_const'], f'UC_MIPS_REG_{n}') for n in range(32)]
+STATE = 0x00200000           # area di scambio per FPR/FCSR
+INIT, READ, PRE = 0x00004000, 0x00004400, 0x00004800
+# prologo: abilita CU1 (FPU) via mtc0 cosi' hflags si aggiornano
+pre = [I(15, 0, 8, 0x3040), I(13, 8, 8, 0x0004), 0x40886000, 0]                 # lui t0,0x3040; ori t0,4; mtc0 t0,Status
+uc.mem_write(PRE, b''.join(struct.pack('>I', w) for w in pre))
+uc.emu_start(PRE, PRE + 4 * 3)
+# programma init FPR: lwc1 f_n, 4n(t9) ; lw t0,128(t9); ctc1 t0,$31
+T9 = 25
+prog = [I(49, T9, n, 4 * n) for n in range(32)] + [I(35, T9, 8, 128), (17 << 26) | (6 << 21) | (8 << 16) | (31 << 11), 0]
+uc.mem_write(INIT, b''.join(struct.pack('>I', w) for w in prog))
+# programma lettura: swc1 f_n, 4n(t9) ; cfc1 t0,$31 ; sw t0,128(t9)
+prog = [I(57, T9, n, 4 * n) for n in range(32)] + [(17 << 26) | (2 << 21) | (8 << 16) | (31 << 11), I(43, T9, 8, 128), 0]
+uc.mem_write(READ, b''.join(struct.pack('>I', w) for w in prog))
+
+def isnan(b): return (b & 0x7f800000) == 0x7f800000 and (b & 0x7fffff) != 0
+def isinf(b): return (b & 0x7fffffff) == 0x7f800000
+
+bad = collections.Counter(); shown = 0; skipped = collections.Counter(); ok = 0
+OPNAME = lambda w: m.decode(w)['op']
+for i, (p, cs) in enumerate(zip(PROGS, CASES)):
+    cp = cpp[i]
+    if cp['st'] != 0: skipped[f'cpp status {cp["st"]}'] += 1; continue
+    base = CODE0 + i * CODE_STRIDE
+    if os.environ.get('DBG'): print(i, ' '.join(OPNAME(w) for w in p), flush=True)
+    uc.mem_write(base, b''.join(struct.pack('>I', w) for w in p))
+    uc.mem_write(SCR, cs['mem'])
+    # init FPR/FCSR
+    uc.mem_write(STATE, struct.pack('>32I', *cs['f']) + struct.pack('>I', cs['fcsr']))
+    uc.reg_write(GPR[T9], STATE)
+    uc.emu_start(INIT, INIT + 4 * 34)
+    for n in range(1, 32): uc.reg_write(GPR[n], cs['r'][n])
+    uc.reg_write(UC_MIPS_REG_HI, cs['hi']); uc.reg_write(UC_MIPS_REG_LO, cs['lo'])
+    try:
+        uc.emu_start(base, END, count=2000)
+    except UcError as e:
+        skipped[f'unicorn err {e}'] += 1
+        uc.emu_start(PRE, PRE + 4 * 3)      # ripristina Status (EXL=0)
+        continue
+    ur = [0] + [uc.reg_read(GPR[n]) for n in range(1, 32)]
+    uhi, ulo = uc.reg_read(UC_MIPS_REG_HI), uc.reg_read(UC_MIPS_REG_LO)
+    umem = bytes(uc.mem_read(SCR, SCR_LEN))
+    uc.reg_write(GPR[T9], STATE)
+    uc.emu_start(READ, READ + 4 * 34)
+    st = bytes(uc.mem_read(STATE, 132))
+    uf = struct.unpack('>32I', st[:128]); ufcsr = struct.unpack('>I', st[128:])[0]
+    # NaN: risultati non confrontabili (payload diversi tra softfloat e SSE)
+    if any(isnan(x) for x in uf) or any(isnan(x) for x in cp['f']):
+        skipped['NaN in FPU'] += 1; continue
+    diffs = []
+    for n in range(1, 32):
+        if ur[n] != cp['r'][n]: diffs.append(f'r{n}: uni={ur[n]:#010x} cpp={cp["r"][n]:#010x}')
+    if uhi != cp['hi']: diffs.append(f'hi uni={uhi:#x} cpp={cp["hi"]:#x}')
+    if ulo != cp['lo']: diffs.append(f'lo uni={ulo:#x} cpp={cp["lo"]:#x}')
+    for n in range(32):
+        if uf[n] != cp['f'][n]: diffs.append(f'f{n}: uni={uf[n]:#010x} cpp={cp["f"][n]:#010x}')
+    if ((ufcsr >> 23) & 1) != ((cp['fcsr'] >> 23) & 1): diffs.append(f'fcc uni={(ufcsr>>23)&1} cpp={(cp["fcsr"]>>23)&1}')
+    if umem != cp['mem']:
+        d0 = next(k for k in range(SCR_LEN) if umem[k] != cp['mem'][k])
+        diffs.append(f'mem[{d0:#x}] uni={umem[d0]:#x} cpp={cp["mem"][d0]:#x}')
+    if diffs:
+        ops = [OPNAME(w) for w in p if OPNAME(w) not in ('nop',)]
+        key = tuple(sorted(set(ops)))
+        bad[i] += 1
+        if shown < 8:
+            shown += 1
+            print(f'--- test {i}: {" ".join(f"{OPNAME(w)}" for w in p)}')
+            for w in p: print(f'      {w:08x}  {OPNAME(w)}')
+            for d in diffs[:6]: print('     ', d)
+    else:
+        ok += 1
+
+print(f'\nRISULTATO: {ok} identici, {len(bad)} diversi, {sum(skipped.values())} saltati {dict(skipped)}')

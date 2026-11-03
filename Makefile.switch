@@ -1,0 +1,128 @@
+#---------------------------------------------------------------------------------
+# Panic Park ricompilato -> Nintendo Switch (homebrew .nro)
+# Derivato dal template ufficiale di libnx (switch-examples/templates/application).
+#
+# Requisiti (WSL/Linux con devkitPro):  sudo dkp-pacman -S switch-dev switch-sdl2
+# Uso (dalla cartella recomp/):         make -f Makefile.switch -j$(nproc)
+# Risultato: panicprk.nro -> sd:/switch/panicprk/ insieme ai file del gioco (vedi README_SWITCH.md)
+#---------------------------------------------------------------------------------
+.SUFFIXES:
+
+ifeq ($(strip $(DEVKITPRO)),)
+$(error "Imposta DEVKITPRO: export DEVKITPRO=/opt/devkitpro")
+endif
+
+TOPDIR ?= $(CURDIR)
+include $(DEVKITPRO)/libnx/switch_rules
+
+#---------------------------------------------------------------------------------
+TARGET      := panicprk
+BUILD       := build_switch
+SOURCES     := gen_full platform
+DATA        :=
+INCLUDES    := . gen_full
+ROMFS       :=
+
+APP_TITLE   := Panic Park (recomp)
+APP_AUTHOR  := recomp
+APP_VERSION := 1.0
+
+# cartella dell'app sulla SD (ROM, elf, bin, lang/, assets/, nvram.bin, panicprk.ini, log.txt)
+SWITCH_DIR  ?= sdmc:/switch/panicprk
+OPT         ?= -O2
+
+#---------------------------------------------------------------------------------
+ARCH     := -march=armv8-a+crc+crypto -mtune=cortex-a57 -mtp=soft -fPIE
+
+# -w: il codice generato ha moltissime label inutilizzate
+CFLAGS   := -w $(OPT) -ffunction-sections $(ARCH) $(DEFINES)
+CFLAGS   += $(INCLUDE) -D__SWITCH__ -DUSE_SDL -DS23_POLL_TICK -DS23_SWITCH_DIR=\"$(SWITCH_DIR)\"
+CFLAGS   += -I$(PORTLIBS)/include/SDL2
+CXXFLAGS := $(CFLAGS) -std=gnu++17
+
+ASFLAGS  := $(ARCH)
+LDFLAGS   = -specs=$(DEVKITPRO)/libnx/switch.specs $(ARCH) -Wl,--gc-sections -Wl,-Map,$(notdir $*.map)
+
+SDL_LIBS := $(shell $(PORTLIBS)/bin/sdl2-config --libs 2>/dev/null)
+ifeq ($(strip $(SDL_LIBS)),)
+SDL_LIBS := -lSDL2 -lEGL -lglapi -ldrm_nouveau
+endif
+LIBS     := $(filter-out -lnx,$(SDL_LIBS)) -lnx -lm
+
+LIBDIRS  := $(PORTLIBS) $(LIBNX)
+
+#---------------------------------------------------------------------------------
+ifneq ($(BUILD),$(notdir $(CURDIR)))
+#---------------------------------------------------------------------------------
+
+export OUTPUT  := $(CURDIR)/$(TARGET)
+export TOPDIR  := $(CURDIR)
+
+export VPATH   := $(foreach dir,$(SOURCES),$(CURDIR)/$(dir)) \
+                  $(foreach dir,$(DATA),$(CURDIR)/$(dir))
+
+export DEPSDIR := $(CURDIR)/$(BUILD)
+
+CFILES    := $(foreach dir,$(SOURCES),$(notdir $(wildcard $(dir)/*.c)))
+CPPFILES  := $(foreach dir,$(SOURCES),$(notdir $(wildcard $(dir)/*.cpp)))
+SFILES    := $(foreach dir,$(SOURCES),$(notdir $(wildcard $(dir)/*.s)))
+BINFILES  := $(foreach dir,$(DATA),$(notdir $(wildcard $(dir)/*.*)))
+
+export LD := $(CXX)
+
+export OFILES_BIN := $(addsuffix .o,$(BINFILES))
+export OFILES_SRC := $(CPPFILES:.cpp=.o) $(CFILES:.c=.o) $(SFILES:.s=.o)
+export OFILES     := $(OFILES_BIN) $(OFILES_SRC)
+export HFILES_BIN := $(addsuffix .h,$(subst .,_,$(BINFILES)))
+
+export INCLUDE  := $(foreach dir,$(INCLUDES),-I$(CURDIR)/$(dir)) \
+                   $(foreach dir,$(LIBDIRS),-I$(dir)/include) \
+                   -I$(CURDIR)/$(BUILD)
+
+export LIBPATHS := $(foreach dir,$(LIBDIRS),-L$(dir)/lib)
+
+# icona: switch/icon.jpg (256x256) se c'e', altrimenti quella predefinita di libnx
+ifneq (,$(wildcard $(TOPDIR)/switch/icon.jpg))
+	export APP_ICON := $(TOPDIR)/switch/icon.jpg
+else
+	export APP_ICON := $(LIBNX)/default_icon.jpg
+endif
+
+export NROFLAGS += --icon=$(APP_ICON)
+export NROFLAGS += --nacp=$(CURDIR)/$(TARGET).nacp
+ifneq ($(ROMFS),)
+	export NROFLAGS += --romfsdir=$(CURDIR)/$(ROMFS)
+endif
+
+.PHONY: $(BUILD) clean all
+
+#---------------------------------------------------------------------------------
+all: $(BUILD)
+
+$(BUILD):
+	@[ -d $@ ] || mkdir -p $@
+	@$(MAKE) --no-print-directory -C $(BUILD) -f $(CURDIR)/Makefile.switch
+
+#---------------------------------------------------------------------------------
+clean:
+	@echo clean ...
+	@rm -fr $(BUILD) $(TARGET).nro $(TARGET).nacp $(TARGET).elf
+
+#---------------------------------------------------------------------------------
+else
+.PHONY: all
+
+DEPENDS := $(OFILES:.o=.d)
+
+all : $(OUTPUT).nro
+
+$(OUTPUT).nro : $(OUTPUT).elf $(OUTPUT).nacp
+$(OUTPUT).elf : $(OFILES)
+
+$(OFILES_SRC) : $(HFILES_BIN)
+
+-include $(DEPENDS)
+
+#---------------------------------------------------------------------------------
+endif
+#---------------------------------------------------------------------------------

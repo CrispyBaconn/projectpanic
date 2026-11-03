@@ -1,0 +1,131 @@
+#-------------------------------------------------------------------------------
+# Panic Park ricompilato -> Wii U (Aroma), file .wuhb
+# Derivato dal template ufficiale di wut (samples/make/helloworld).
+#
+# Requisiti (WSL/Linux con devkitPro):  sudo dkp-pacman -S wiiu-dev wiiu-sdl2
+# Uso (dalla cartella recomp/):         make -f Makefile.wiiu -j$(nproc)
+# Risultato: panicprk.wuhb  -> copialo in sd:/wiiu/apps/panicprk/ insieme ai file del gioco (vedi README_WIIU.md)
+#-------------------------------------------------------------------------------
+.SUFFIXES:
+
+ifeq ($(strip $(DEVKITPRO)),)
+$(error "Imposta DEVKITPRO: export DEVKITPRO=/opt/devkitpro")
+endif
+
+TOPDIR ?= $(CURDIR)
+
+APP_NAME      := Panic Park (recomp)
+APP_SHORTNAME := Panic Park
+APP_AUTHOR    := recomp
+
+include $(DEVKITPRO)/wut/share/wut_rules
+
+#-------------------------------------------------------------------------------
+TARGET     := panicprk
+BUILD      := build_wiiu
+SOURCES    := gen_full platform
+DATA       :=
+INCLUDES   := . gen_full
+CONTENT    :=
+ICON       :=
+TV_SPLASH  :=
+DRC_SPLASH :=
+
+# cartella dell'app sulla SD (ROM, elf, bin, lang/, assets_be/, nvram.bin, panicprk.ini, log.txt)
+WIIU_DIR   ?= fs:/vol/external01/wiiu/apps/panicprk
+OPT        ?= -O2
+
+#-------------------------------------------------------------------------------
+# -w: il codice generato ha moltissime label inutilizzate
+CFLAGS   := -w $(OPT) -ffunction-sections $(MACHDEP)
+CFLAGS   += $(INCLUDE) -D__WIIU__ -D__WUT__ -DUSE_SDL -DS23_POLL_TICK -DS23_WIIU_DIR=\"$(WIIU_DIR)\"
+CFLAGS   += -I$(DEVKITPRO)/portlibs/wiiu/include/SDL2
+CXXFLAGS := $(CFLAGS) -std=gnu++17
+
+ASFLAGS  := $(ARCH)
+LDFLAGS   = $(ARCH) $(RPXSPECS) -Wl,--gc-sections -Wl,-Map,$(notdir $*.map)
+
+LIBS     := -lSDL2 -lwut -lm
+
+LIBDIRS  := $(PORTLIBS) $(WUT_ROOT)
+
+#-------------------------------------------------------------------------------
+ifneq ($(BUILD),$(notdir $(CURDIR)))
+#-------------------------------------------------------------------------------
+
+export OUTPUT  := $(CURDIR)/$(TARGET)
+export TOPDIR  := $(CURDIR)
+
+export VPATH   := $(foreach dir,$(SOURCES),$(CURDIR)/$(dir)) \
+                  $(foreach dir,$(DATA),$(CURDIR)/$(dir))
+
+export DEPSDIR := $(CURDIR)/$(BUILD)
+
+CFILES    := $(foreach dir,$(SOURCES),$(notdir $(wildcard $(dir)/*.c)))
+CPPFILES  := $(foreach dir,$(SOURCES),$(notdir $(wildcard $(dir)/*.cpp)))
+SFILES    := $(foreach dir,$(SOURCES),$(notdir $(wildcard $(dir)/*.s)))
+BINFILES  := $(foreach dir,$(DATA),$(notdir $(wildcard $(dir)/*.*)))
+
+export LD := $(CXX)
+
+export OFILES_BIN := $(addsuffix .o,$(BINFILES))
+export OFILES_SRC := $(CPPFILES:.cpp=.o) $(CFILES:.c=.o) $(SFILES:.s=.o)
+export OFILES     := $(OFILES_BIN) $(OFILES_SRC)
+export HFILES_BIN := $(addsuffix .h,$(subst .,_,$(BINFILES)))
+
+export INCLUDE  := $(foreach dir,$(INCLUDES),-I$(CURDIR)/$(dir)) \
+                   $(foreach dir,$(LIBDIRS),-I$(dir)/include) \
+                   -I$(CURDIR)/$(BUILD)
+
+export LIBPATHS := $(foreach dir,$(LIBDIRS),-L$(dir)/lib)
+
+ifneq (,$(strip $(CONTENT)))
+	export APP_CONTENT := $(TOPDIR)/$(CONTENT)
+endif
+
+ifneq (,$(strip $(ICON)))
+	export APP_ICON := $(TOPDIR)/$(ICON)
+else ifneq (,$(wildcard $(TOPDIR)/wiiu/icon.png))
+	export APP_ICON := $(TOPDIR)/wiiu/icon.png
+endif
+
+ifneq (,$(wildcard $(TOPDIR)/wiiu/tv-splash.png))
+	export APP_TV_SPLASH := $(TOPDIR)/wiiu/tv-splash.png
+endif
+ifneq (,$(wildcard $(TOPDIR)/wiiu/drc-splash.png))
+	export APP_DRC_SPLASH := $(TOPDIR)/wiiu/drc-splash.png
+endif
+
+.PHONY: $(BUILD) clean all
+
+#-------------------------------------------------------------------------------
+all: $(BUILD)
+
+$(BUILD):
+	@$(shell [ ! -d $(BUILD) ] && mkdir -p $(BUILD))
+	@$(MAKE) --no-print-directory -C $(BUILD) -f $(CURDIR)/Makefile.wiiu
+
+#-------------------------------------------------------------------------------
+clean:
+	@echo clean ...
+	@rm -fr $(BUILD) $(TARGET).wuhb $(TARGET).rpx $(TARGET).elf
+
+#-------------------------------------------------------------------------------
+else
+.PHONY: all
+
+DEPENDS := $(OFILES:.o=.d)
+
+all : $(OUTPUT).wuhb
+
+$(OUTPUT).wuhb : $(OUTPUT).rpx
+$(OUTPUT).rpx  : $(OUTPUT).elf
+$(OUTPUT).elf  : $(OFILES)
+
+$(OFILES_SRC)  : $(HFILES_BIN)
+
+-include $(DEPENDS)
+
+#-------------------------------------------------------------------------------
+endif
+#-------------------------------------------------------------------------------
