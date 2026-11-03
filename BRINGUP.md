@@ -1,76 +1,76 @@
-# Bring-up: il gioco ricompilato arriva in attract mode
+# Bring-up: the recompiled game reaches attract mode
 
-Eseguito con `platform/platform_stub.cpp` (nessun video: si registrano gli accessi hardware e si stampa il testo in VRAM).
-Valori osservati dall'esecuzione del codice ricompilato; nomi e semantica dei registri dal driver MAME (`namcos23.cpp`).
+Historical notes from the first bring-up, run with `platform/platform_stub.cpp` before video, audio and inputs existed
+(hardware accesses were logged and the text in VRAM was printed).
+Values observed while running the recompiled code; register names and semantics from the MAME driver (`namcos23.cpp`).
 
 ```
-S23_DSW=0xfd ./build_full/panicprk_stub panicprk_main.elf main_r4650_BE_4MB.bin 5000000 40 <cartella_con_le_ROM>
+S23_DSW=0xfd ./build_full/panicprk_stub panicprk_main.elf main_r4650_BE_4MB.bin 5000000 40 <folder_with_the_ROMs>
 ```
-`DSW=0xFD` = "Skip POST" attivo. La cartella ROM deve contenere `pnp1mtah.2j` e `pnp1mtal.2h` (data ROM, interleave byte).
+`DSW=0xFD` = "Skip POST" on. The ROM folder must contain `pnp1mtah.2j` and `pnp1mtal.2h` (data ROM, byte interleave).
 
-## Finestra SDL2 (dal vivo)
-Build: `sudo apt install libsdl2-dev` poi `sh platform/build_full.sh` (se `sdl2-config` c'è, lo stub viene compilato con `-DUSE_SDL`; `NO_SDL=1` la esclude).
-Esecuzione: `S23_WINDOW=1 S23_DSW=0xfd ./build_full/panicprk_stub panicprk_main.elf main_r4650_BE_4MB.bin 5000000 0 <cartella_ROM>`
-(il quarto argomento `0` = nessun limite di tempo). Tasti: `Esc` esce, `F11` schermo intero, `F12` salva `screenshot_NNN.png`.
-Architettura: il gioco gira in un thread con stack da 256 MB (solo lui riceve i segnali dei timer), il thread principale gestisce SDL
-(eventi, texture RGB24 640x480 aggiornata a ogni giro, presentazione con vsync, scala logica 640x480 -> 4:3). Il titolo mostra i frame di gioco al secondo.
-Test non interattivo: `SDL_VIDEODRIVER=dummy S23_WINDOW=1 S23_WINDOW_SECS=9 S23_WINDOW_SHOT=out.png ...` salva i pixel realmente presentati dal renderer.
-**Non ci sono ingressi:** i tasti di gioco (monete, Start, leve) passano dall'H8/JVS, non ancora emulato.
+## SDL2 window (live)
+Build: `sudo apt install libsdl2-dev` then `sh platform/build_full.sh` (if `sdl2-config` is present the stub is built with `-DUSE_SDL`; `NO_SDL=1` excludes it).
+Run: `S23_WINDOW=1 S23_DSW=0xfd ./build_full/panicprk_stub panicprk_main.elf main_r4650_BE_4MB.bin 5000000 0 <ROM_folder>`
+(the fourth argument `0` = no time limit). Keys: `Esc` exits, `F11` full screen, `F12` saves `screenshot_NNN.png`.
+Architecture: the game runs in a thread with a 256 MB stack (only it receives the timer signals), the main thread handles SDL
+(events, 640x480 RGB24 texture updated every iteration, presentation with vsync, 640x480 logical scale -> 4:3). The title shows the game frames per second.
+Non-interactive test: `SDL_VIDEODRIVER=dummy S23_WINDOW=1 S23_WINDOW_SECS=9 S23_WINDOW_SHOT=out.png ...` saves the pixels actually presented by the renderer.
+At that stage there were no inputs: the game buttons (coins, Start, levers) go through the H8/JVS, which wasn't emulated yet.
 
-## Video (livello testo)
-Con `S23_FRAMES=<cartella> S23_FRAME_EVERY=300` lo stub salva un PNG 640x480 ogni N vblank (livello testo C361 + palette C404 + gamma).
-Il renderer replica `draw_text_layer()` e la gamma di `screen_update()` del driver MAME: tile 16x16 a 4 bpp, pixel 0xF trasparente,
-colore = byte basso della mezza parola BE a `piano + 2*pen` (piani R/G/B a +0x0000/+0x10000/+0x20000), pen = `palbase | pal<<4 | val`.
-Schermate osservate dopo ~40 s: istruzioni "PANIC KING mode", "HALL OF FAME" (Shark/Buffalo/Missile/Jumping/Mole/Fire Panic), "KING STAGE".
-**Non c'è ancora il 3D.**
+## Video (text layer)
+With `S23_FRAMES=<folder> S23_FRAME_EVERY=300` the stub saves a 640x480 PNG every N vblanks (C361 text layer + C404 palette + gamma).
+The renderer replicates `draw_text_layer()` and the gamma of `screen_update()` from the MAME driver: 16x16 tiles at 4 bpp, pixel 0xF transparent,
+colour = low byte of the BE half-word at `plane + 2*pen` (R/G/B planes at +0x0000/+0x10000/+0x20000), pen = `palbase | pal<<4 | val`.
+Screens observed after ~40 s: "PANIC KING mode" instructions, "HALL OF FAME" (Shark/Buffalo/Missile/Jumping/Mole/Fire Panic), "KING STAGE".
 
-Scroll e interrupt di scanline (verificato con `S23_TRACE_SCROLL=1`): nelle schermate di attract il gioco scrive i registri C361
-solo all'avvio (`xscroll` = `0x035C` poi `0xFF5C`, entrambi = scroll 0; `irq_scanline` = 0 poi `0x1FF` = disattivato) e **non abilita mai IP3**
-(`Status` resta `0xB401`). Lo scroll per riga (`S23_ROWSCROLL=1`) e l'IRQ di scanline sono implementati come in MAME ma non sono mai stati
-esercitati dal gioco in queste schermate; per questo di default si usa un unico scroll per frame.
-Le scritte che sembravano sovrapposte erano frame di transizione tra due schermate. L'esecuzione non è deterministica (timer legati
-all'orologio del PC), quindi lo stesso numero di vblank può cadere in fasi diverse dell'animazione.
+Scroll and scanline interrupts (checked with `S23_TRACE_SCROLL=1`): in the attract screens the game writes the C361 registers
+only at startup (`xscroll` = `0x035C` then `0xFF5C`, both = scroll 0; `irq_scanline` = 0 then `0x1FF` = disabled) and **never enables IP3**
+(`Status` stays `0xB401`). Per-line scroll (`S23_ROWSCROLL=1`) and the scanline IRQ are implemented as in MAME but were never
+exercised by the game in these screens; that's why a single scroll per frame is used by default.
+Captions that looked overlapped were transition frames between two screens. Execution is not deterministic (timers tied
+to the PC clock), so the same number of vblanks can fall at different phases of the animation.
 
-Sequenza osservata: logo `PANIC PARK © 1997 NAMCO`, `PRESS START!` + TOP 10, tutorial animato (mano, freccia, moneta), "WHAT'S THE PANIC KING MODE?",
+Observed sequence: logo `PANIC PARK © 1997 NAMCO`, `PRESS START!` + TOP 10, animated tutorial (hand, arrow, coin), "WHAT'S THE PANIC KING MODE?",
 "TO TRY THE PANIC KING MODE…", HALL OF FAME (Shark/Buffalo/Missile/Jumping/Mole/Fire Panic), KING STAGE.
 
-## Risultato (40 s)
-2.303 frame (~57/s), 222.813 DMA C435 (4,9 M parole), 130.951 `render`, 75.720 `flush`, 1,2 M letture data ROM,
-interrupt: vblank (IP2) 2.322, C435 (IP4) 22.539, timer (IP7) 65. Testo a schermo: `COIN(S)`.
+## Result (40 s)
+2,303 frames (~57/s), 222,813 C435 DMAs (4.9 M words), 130,951 `render`, 75,720 `flush`, 1.2 M data ROM reads,
+interrupts: vblank (IP2) 2,322, C435 (IP4) 22,539, timer (IP7) 65. Text on screen: `COIN(S)`.
 
-## Cosa serve per arrivare lì (tutto già nello stub)
-| Elemento | Comportamento richiesto dal gioco |
+## What it takes to get there (all already in the stub)
+| Element | Behaviour required by the game |
 |---|---|
-| Boot | Il gioco è `main(tabella_servizi_boot_ROM)`; `main` che ritorna chiama il servizio 0 del boot ROM (= `exit`). |
-| CP0 | `Count` a clock/2 (84,672 MHz); `Compare` → IP7; `Status` finale `0xB401` (IM7, IM5, IM4, IM2, IE). |
-| Vblank | IP2 (IRQ0) a 59,9 Hz, resta attivo finché il gioco scrive `0x0D00000A` (ack). |
-| C361 | `0x0682000A` = `vpos×2 \| vblank`; `0x0682000C` = vblank (525 linee, blanking dalla 480). |
-| CTL | `0x0D000002` = DSW; `0x0D000004/06` = registri a scorrimento a 12 bit (scrittura = aggancio, 0xFFFF = bit 1). |
-| C417 | `0x02000000` stato = `0x008E` (unità non occupate); `0x02000006` test_done = 0; `0x0200000E` ack IRQ C435. |
-| C435 | `0x01000028` busy = 1; DMA (`1C` addr, `20` size, `24` start) = flusso di comandi a 16 bit; fine lista → IRQ IP4. |
-| Memorie | NVRAM, C361 char/text, C404 (+gamma), palette, C422: RAM che mantiene i valori. Data ROM a `0x08000000`. |
+| Boot | The game is `main(boot_ROM_services_table)`; a returning `main` calls boot ROM service 0 (= `exit`). |
+| CP0 | `Count` at clock/2 (84.672 MHz); `Compare` → IP7; final `Status` `0xB401` (IM7, IM5, IM4, IM2, IE). |
+| Vblank | IP2 (IRQ0) at 59.9 Hz, stays active until the game writes `0x0D00000A` (ack). |
+| C361 | `0x0682000A` = `vpos×2 \| vblank`; `0x0682000C` = vblank (525 lines, blanking from 480). |
+| CTL | `0x0D000002` = DSW; `0x0D000004/06` = 12-bit shift registers (write = latch, 0xFFFF = bit 1). |
+| C417 | `0x02000000` status = `0x008E` (units not busy); `0x02000006` test_done = 0; `0x0200000E` C435 IRQ ack. |
+| C435 | `0x01000028` busy = 1; DMA (`1C` addr, `20` size, `24` start) = stream of 16-bit commands; end of list → IRQ IP4. |
+| Memories | NVRAM, C361 char/text, C404 (+gamma), palette, C422: RAM that keeps its values. Data ROM at `0x08000000`. |
 
-## Protocollo con l'H8 (C416, memoria condivisa a `0x04400000`)
-**Correzione:** i 64 KB scritti dal gioco in C416 non sono un upload di firmware: sono un **azzeramento** (l'H8 ha una ROM propria, `pnp1vera.ic3`).
-`MCUEN` (`0x04C3FF0A`): 0 = H8 in reset, ≠0 = avviato.
-Schema "mailbox": il gioco scrive un codice in una cella, l'H8 risponde cambiandola. Osservato:
+## Protocol with the H8 (C416, shared memory at `0x04400000`)
+**Correction:** the 64 KB the game writes to C416 are not a firmware upload: they are a **clear** (the H8 has its own ROM, `pnp1vera.ic3`).
+`MCUEN` (`0x04C3FF0A`): 0 = H8 in reset, ≠0 = started.
+"Mailbox" scheme: the game writes a code into a cell, the H8 answers by changing it. Observed:
 
-| Cella | Il gioco scrive | L'H8 (finto) fa |
+| Cell | The game writes | The (fake) H8 does |
 |---|---|---|
-| `0x3002` | `0x3163` | risponde `0x7601`; scrive versione in `0x3000`; `0x3018 = 0x301A = 0xFFFF` (= RAM-check "OK") |
-| `0x306A` | `0x3163` | la azzera |
-| `0x3078` | `0x3165`, `0x3164` | la azzera |
+| `0x3002` | `0x3163` | answers `0x7601`; writes the version to `0x3000`; `0x3018 = 0x301A = 0xFFFF` (= RAM check "OK") |
+| `0x306A` | `0x3163` | clears it |
+| `0x3078` | `0x3165`, `0x3164` | clears it |
 
-La versione dell'H8 (`0x3000`) è un'**ipotesi** (`0x0100`): il valore vero lo scrive il firmware. L'H8 finto è un **HLE minimo**:
-sound, I/O JVS e altri comandi non sono implementati. Prossimo passo robusto: eseguire il vero firmware (`pnp1vera.ic3`, H8/3002)
-con un interprete H8/300H, validandolo sul fatto che produca le stesse risposte (`0x7601`, `0xFFFF`).
+The H8 version (`0x3000`) was an **assumption** (`0x0100`): the real value is written by the firmware. The fake H8 was a **minimal HLE**;
+it was later replaced by the real firmware (`pnp1vera.ic3`, H8/3002) running on an H8/300H interpreter, validated by checking
+that it produces the same replies (`0x7601`, `0xFFFF`).
 
-## Flusso 3D osservato (C435) – serve per il renderer
-Framing come in MAME `c435_pio_w`: header `h`; se `(h & 0x4000)` lunghezza = `h & 0xFF`, altrimenti `h & 0xF`.
-Classi: `0x0000` matrici (`0x00/10/40/50` osservate), `0x4000` stati (priorità, tx/ty, scala, luce, viewport `0x0F46`, clip `0x0FC8`,
-`0x0F09`, `0x0F42`, interrupt `0x0F01`), `0x8000` render, `0xC000` flush. I tipi e il significato dei parametri vanno presi dal driver MAME.
+## Observed 3D stream (C435) – needed for the renderer
+Framing as in MAME's `c435_pio_w`: header `h`; if `(h & 0x4000)` length = `h & 0xFF`, otherwise `h & 0xF`.
+Classes: `0x0000` matrices (`0x00/10/40/50` observed), `0x4000` states (priority, tx/ty, scale, light, viewport `0x0F46`, clip `0x0FC8`,
+`0x0F09`, `0x0F42`, interrupt `0x0F01`), `0x8000` render, `0xC000` flush. Types and parameter meanings come from the MAME driver.
 
-## Limiti attuali
-* Nessun video né audio; H8 finto; ingressi a riposo.
-* Il periodo del timer e l'H8 finto sono ipotesi; i flag FPU non sono modellati.
-* Compilato a `-O0`.
+## Limits at that stage
+* No video or audio; fake H8; inputs idle.
+* The timer period and the fake H8 were assumptions; FPU flags are not modelled.
+* Built at `-O0`.

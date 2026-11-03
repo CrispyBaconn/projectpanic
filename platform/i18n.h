@@ -1,7 +1,7 @@
-// Traduzioni dei menu: file JSON in "lang/" (uno per lingua, es. lang/it.json, lang/en.json).
-// Ogni file e' un oggetto piatto { "chiave": "testo", ... }; "language_name" e' il nome mostrato nel menu.
-// Le chiavi mancanti usano il testo italiano interno, quindi un file incompleto funziona lo stesso.
-// Il font del menu e' ASCII: le lettere accentate vengono semplificate (e' -> e').
+// Menu translations: JSON files in "lang/" (one per language, e.g. lang/it.json, lang/en.json).
+// Each file is a flat object { "key": "text", ... }; "language_name" is the name shown in the menu.
+// Missing keys use the built-in English text, so an incomplete file still works.
+// The menu font is ASCII: accented letters are simplified (e' -> e').
 #pragma once
 #include <cstdio>
 #include <map>
@@ -12,48 +12,48 @@
 
 namespace i18n {
 
-// ---------------------------------------------------------------- testi predefiniti (italiano)
+// ---------------------------------------------------------------- default texts (English)
 inline const std::map<std::string, std::string>& builtin() {
     static const std::map<std::string, std::string> m = {
-        {"language_name", "Italiano"},
-        {"subtitle", "- versione ricompilata (Namco System 23)"},
-        {"ctrl_none", "Controller: nessuno rilevato (collegalo ora, oppure usa la tastiera)"},
+        {"language_name", "English"},
+        {"subtitle", "- recompiled version (Namco System 23)"},
+        {"ctrl_none", "Controller: none detected (plug it in now, or use the keyboard)"},
         {"ctrl", "Controller: "},
-        {"press_key", "premi un tasto..."}, {"press_button", "premi un pulsante..."},
-        {"start_game", ">>> AVVIA IL GIOCO <<<"},
-        {"col_kb1", "Tastiera 1"}, {"col_kb2", "Tastiera 2"}, {"col_pad", "Controller"},
-        {"act_left", "Muovi a sinistra"}, {"act_right", "Muovi a destra"}, {"act_coin", "Moneta (credito)"},
-        {"act_start1", "Start giocatore 1"}, {"act_start2", "Start giocatore 2"}, {"act_up", "Su (selezione)"},
-        {"act_down", "Giu' (selezione)"}, {"act_enter", "Invio / pulsante 1"}, {"act_test", "Test (cabinato)"},
-        {"act_service", "DIP configurazione on/off"},
-        {"deadzone", "Zona morta stick sinistro"}, {"sens", "Escursione asse analogico"},
-        {"invert", "Inverti asse"}, {"axis", "Stick usato per il movimento"}, {"axis_left", "sinistro"}, {"axis_right", "destro"},
-        {"fullscreen", "Schermo intero (F11)"},
-        {"res3d", "Risoluzione del 3D"}, {"res3d_screen", "come lo schermo (4:3)"}, {"res3d_orig", "originale 640x480"}, {"res3d_half", "veloce 320x240"},
-        {"gpu", "Disegno del 3D"}, {"gpu_on", "scheda video (OpenGL)"}, {"gpu_off", "processore (CPU)"},
-        {"fps", "Aggiornamento schermo"}, {"fps_vsync", "come il monitor (VSync)"}, {"fps_free", "senza limite"},
-        {"wide", "Formato (sperimentale)"}, {"wide_169", "16:9 widescreen"}, {"wide_43", "4:3 originale"},
-        {"post", "Salta il POST all'avvio (DIP 7)"}, {"svc", "DIP configurazione acceso all'avvio"}, {"svc_on", "si (modalita' servizio)"},
-        {"ui_lang", "Lingua dei menu"}, {"game_lang", "Lingua del gioco"}, {"game_lang_keep", "quella scelta nel gioco"},
-        {"yes", "si"}, {"no", "no"},
-        {"reset", "Ripristina impostazioni predefinite"}, {"quit", "Esci"},
-        {"help_wait", "Premi il nuovo tasto/pulsante - Esc annulla - Backspace cancella"},
-        {"help_nav", "Su/Giu' scegli - Sx/Dx colonna o valore - Invio modifica - Esc esce"},
-        {"help_game", "In gioco: Esc, Select+Start o MENU = impostazioni, F3 DIP"}, {"help_ingame", "Gioco in pausa - Esc / B / Indietro: riprendi"}, {"resume_game", ">>> RIPRENDI IL GIOCO <<<"}, {"touchui", "Pulsanti a schermo (tocco)"}, {"touch_menu", "MENU"},
-        {"play", "GIOCA"}, {"resume", "RIPRENDI"}, {"settings", "IMPOSTAZIONI"}, {"exit", "ESCI"}, {"paused", "PAUSA"}, {"back", "Indietro"},
-        {"tab_controls", "COMANDI"}, {"tab_stick", "LEVA E TOCCO"}, {"tab_video", "VIDEO"}, {"tab_game", "GIOCO"},
-        {"h_select", "Scegli"}, {"h_back", "Esci"}, {"h_resume", "Riprendi"}, {"h_change", "Cambia"}, {"h_assign", "Assegna"}, {"h_tabs", "Schede"},
-        {"h_touch", "Tocca una riga per cambiarla, trascina per scorrere"}, {"h_touch_bind", "Tocca una casella e premi il nuovo tasto o pulsante"},
-        {"press_key_t", "PREMI UN TASTO"}, {"press_button_t", "PREMI UN PULSANTE"},
-        {"wait_hint_key", "Esc annulla, Backspace cancella"}, {"wait_hint_pad", "sul controller (Esc annulla, Backspace cancella)"},
-        {"cancel", "ANNULLA"}, {"clear", "CANCELLA"}, {"reset_confirm", "Sicuro? Premi di nuovo per ripristinare"},
-        {"ctrl_none_short", "Nessun controller"}, {"key_enter", "Invio"}, {"loading", "Caricamento..."}, {"stats", "Statistiche a schermo"}, {"h3ds_help", "SELECT+START o MENU: pausa  -  SELECT o B: moneta"}, {"pad_up", "Croce su"}, {"pad_down", "Croce giù"}, {"pad_left", "Croce sinistra"}, {"pad_right", "Croce destra"},
-        {"touch_coin", "MONETA"}, {"touch_svc", "SERVIZIO"}, {"touch_up", "SU"}, {"touch_down", "GIU'"}, {"touch_ok", "INVIO"},
+        {"press_key", "press a key..."}, {"press_button", "press a button..."},
+        {"start_game", ">>> START THE GAME <<<"},
+        {"col_kb1", "Keyboard 1"}, {"col_kb2", "Keyboard 2"}, {"col_pad", "Controller"},
+        {"act_left", "Move left"}, {"act_right", "Move right"}, {"act_coin", "Coin (credit)"},
+        {"act_start1", "Player 1 start"}, {"act_start2", "Player 2 start"}, {"act_up", "Up (select)"},
+        {"act_down", "Down (select)"}, {"act_enter", "Enter / button 1"}, {"act_test", "Test (cabinet)"},
+        {"act_service", "Service DIP on/off"},
+        {"deadzone", "Left stick dead zone"}, {"sens", "Analog axis range"},
+        {"invert", "Invert axis"}, {"axis", "Stick used for movement"}, {"axis_left", "left"}, {"axis_right", "right"},
+        {"fullscreen", "Fullscreen (F11)"},
+        {"res3d", "3D resolution"}, {"res3d_screen", "same as screen (4:3)"}, {"res3d_orig", "original 640x480"}, {"res3d_half", "fast 320x240"},
+        {"gpu", "3D rendering"}, {"gpu_on", "graphics card (OpenGL)"}, {"gpu_off", "processor (CPU)"},
+        {"fps", "Screen refresh"}, {"fps_vsync", "same as monitor (VSync)"}, {"fps_free", "unlimited"},
+        {"wide", "Aspect ratio (experimental)"}, {"wide_169", "16:9 widescreen"}, {"wide_43", "4:3 original"},
+        {"post", "Skip POST at boot (DIP 7)"}, {"svc", "Service DIP on at boot"}, {"svc_on", "yes (service mode)"},
+        {"ui_lang", "Menu language"}, {"game_lang", "Game language"}, {"game_lang_keep", "as set in the game"},
+        {"yes", "yes"}, {"no", "no"},
+        {"reset", "Restore default settings"}, {"quit", "Quit"},
+        {"help_wait", "Press the new key/button - Esc cancel - Backspace clear"},
+        {"help_nav", "Up/Down choose - Left/Right column or value - Enter edit - Esc quit"},
+        {"help_game", "In game: Esc, Select+Start or MENU = settings, F3 DIP"}, {"help_ingame", "Game paused - Esc / B / Back: resume"}, {"resume_game", ">>> RESUME THE GAME <<<"}, {"touchui", "On-screen buttons (touch)"}, {"touch_menu", "MENU"},
+        {"play", "PLAY"}, {"resume", "RESUME"}, {"settings", "SETTINGS"}, {"exit", "EXIT"}, {"paused", "PAUSED"}, {"back", "Back"},
+        {"tab_controls", "CONTROLS"}, {"tab_stick", "STICK & TOUCH"}, {"tab_video", "VIDEO"}, {"tab_game", "GAME"},
+        {"h_select", "Select"}, {"h_back", "Exit"}, {"h_resume", "Resume"}, {"h_change", "Change"}, {"h_assign", "Assign"}, {"h_tabs", "Tabs"},
+        {"h_touch", "Tap a row to change it, drag to scroll"}, {"h_touch_bind", "Tap a box, then press the new key or button"},
+        {"press_key_t", "PRESS A KEY"}, {"press_button_t", "PRESS A BUTTON"},
+        {"wait_hint_key", "Esc cancels, Backspace clears"}, {"wait_hint_pad", "on the controller (Esc cancels, Backspace clears)"},
+        {"cancel", "CANCEL"}, {"clear", "CLEAR"}, {"reset_confirm", "Are you sure? Press again to restore"},
+        {"ctrl_none_short", "No controller"}, {"key_enter", "Enter"}, {"loading", "Loading..."}, {"stats", "On-screen statistics"}, {"h3ds_help", "SELECT+START or MENU: pause  -  SELECT or B: coin"}, {"pad_up", "D-pad up"}, {"pad_down", "D-pad down"}, {"pad_left", "D-pad left"}, {"pad_right", "D-pad right"},
+        {"touch_coin", "COIN"}, {"touch_svc", "SERVICE"}, {"touch_up", "UP"}, {"touch_down", "DOWN"}, {"touch_ok", "ENTER"},
     };
     return m;
 }
 
-// ---------------------------------------------------------------- JSON minimo (oggetto di stringhe)
+// ---------------------------------------------------------------- minimal JSON (object of strings)
 inline void skip_ws(const std::string& s, size_t& i) { while (i < s.size() && (s[i] == ' ' || s[i] == '\t' || s[i] == '\n' || s[i] == '\r')) i++; }
 inline bool parse_str(const std::string& s, size_t& i, std::string& out) {
     if (i >= s.size() || s[i] != '"') return false;
@@ -72,7 +72,7 @@ inline bool parse_str(const std::string& s, size_t& i, std::string& out) {
     if (i >= s.size()) return false;
     i++; return true;
 }
-// ritorna false se il file non e' un oggetto { "k": "v", ... } valido
+// returns false if the file is not a valid { "k": "v", ... } object
 inline bool parse_object(const std::string& s, std::map<std::string, std::string>& out) {
     size_t i = 0; skip_ws(s, i);
     if (s.compare(i, 3, "\xEF\xBB\xBF") == 0) { i += 3; skip_ws(s, i); }   // BOM UTF-8
@@ -90,7 +90,7 @@ inline bool parse_object(const std::string& s, std::map<std::string, std::string
     }
 }
 
-// lettere accentate UTF-8 -> ASCII (il font del menu ha solo i caratteri 32-126)
+// UTF-8 accented letters -> ASCII (the menu font only has characters 32-126)
 inline std::string ascii(const std::string& in) {
     static const std::map<std::string, std::string> rep = {
         {"\xC3\xA0", "a'"}, {"\xC3\xA8", "e'"}, {"\xC3\xA9", "e'"}, {"\xC3\xAC", "i'"}, {"\xC3\xB2", "o'"}, {"\xC3\xB9", "u'"},
@@ -110,7 +110,7 @@ inline std::string ascii(const std::string& in) {
     return o;
 }
 
-// ---------------------------------------------------------------- lingue disponibili e lingua attiva
+// ---------------------------------------------------------------- available languages and active language
 struct Lang { std::string code, name; std::map<std::string, std::string> t; };
 inline std::string& dir() { static std::string d = getenv("S23_LANGDIR") ? getenv("S23_LANGDIR") : "lang"; return d; }
 inline std::vector<Lang>& all() { static std::vector<Lang> v; return v; }
@@ -124,7 +124,7 @@ inline void scan() {
             std::string p = dir() + "/" + n; FILE* f = fopen(p.c_str(), "rb"); if (!f) continue;
             std::string s; char buf[4096]; size_t k; while ((k = fread(buf, 1, sizeof buf, f)) > 0) s.append(buf, k); fclose(f);
             Lang L; L.code = n.substr(0, n.size() - 5);
-            if (!parse_object(s, L.t)) { fprintf(stderr, "lingua %s: JSON non valido, ignorato\n", p.c_str()); continue; }
+            if (!parse_object(s, L.t)) { fprintf(stderr, "language %s: invalid JSON, ignored\n", p.c_str()); continue; }
             L.name = L.t.count("language_name") ? ascii(L.t["language_name"]) : L.code;
             v.push_back(std::move(L));
         }
@@ -135,15 +135,15 @@ inline void scan() {
 inline void select(const std::string& code) {
     cur() = -1; for (size_t i = 0; i < all().size(); i++) if (all()[i].code == code) cur() = (int)i;
 }
-inline std::string cur_code() { return cur() >= 0 ? all()[cur()].code : "it"; }
-inline std::string cur_name() { return cur() >= 0 ? all()[cur()].name : "Italiano"; }
+inline std::string cur_code() { return cur() >= 0 ? all()[cur()].code : "en"; }
+inline std::string cur_name() { return cur() >= 0 ? all()[cur()].name : "English"; }
 inline std::string cur_name_u() { if (cur() >= 0) { auto& t = all()[cur()].t; auto it = t.find("language_name"); if (it != t.end()) return it->second; } return cur_name(); }
-// come tr() ma lascia le lettere accentate (il menu nuovo ha un font con i caratteri latini completi)
+// like tr() but keeps accented letters (the new menu has a font with the full Latin character set)
 inline std::string tru(const std::string& key) {
     if (cur() >= 0) { auto& t = all()[cur()].t; auto it = t.find(key); if (it != t.end()) return it->second; }
     auto it = builtin().find(key); return it != builtin().end() ? it->second : key;
 }
-// testo per la chiave nella lingua attiva (poi italiano interno, poi la chiave stessa)
+// text for the key in the active language (then built-in English, then the key itself)
 inline std::string tr(const std::string& key) {
     if (cur() >= 0) { auto& t = all()[cur()].t; auto it = t.find(key); if (it != t.end()) return ascii(it->second); }
     auto it = builtin().find(key); return it != builtin().end() ? it->second : key;

@@ -1,15 +1,15 @@
 #---------------------------------------------------------------------------------
-# Panic Park ricompilato -> Nintendo 3DS (New 3DS / New 2DS XL), file .3dsx
-# Derivato dal template ufficiale di devkitPro (3ds-examples/graphics/gpu).
+# Recompiled Panic Park -> Nintendo 3DS (New 3DS / New 2DS XL), .3dsx file
+# Derived from the official devkitPro template (3ds-examples/graphics/gpu).
 #
-# Requisiti (WSL/Linux con devkitPro):  sudo dkp-pacman -S 3ds-dev        (devkitARM, libctru, citro3d, citro2d)
-# Uso (dalla cartella recomp/):         make -f Makefile.3ds -j$(nproc)   oppure  sh platform/build_3ds.sh
-# Risultato: panicprk.3dsx -> sd:/3ds/panicprk.3dsx (i file del gioco in sd:/3ds/panicprk/, vedi README_3DS.md)
+# Requirements (WSL/Linux with devkitPro):  sudo dkp-pacman -S 3ds-dev        (devkitARM, libctru, citro3d, citro2d)
+# Usage (from the recomp/ folder):         make -f Makefile.3ds -j$(nproc)   or  sh platform/build_3ds.sh
+# Result: panicprk.3dsx -> sd:/3ds/panicprk.3dsx (the game files in sd:/3ds/panicprk/, see README_3DS.md)
 #---------------------------------------------------------------------------------
 .SUFFIXES:
 
 ifeq ($(strip $(DEVKITARM)),)
-$(error "Imposta DEVKITARM: export DEVKITARM=$$DEVKITPRO/devkitARM")
+$(error "Set DEVKITARM: export DEVKITARM=$$DEVKITPRO/devkitARM")
 endif
 
 TOPDIR ?= $(CURDIR)
@@ -22,16 +22,16 @@ DATA        :=
 INCLUDES    := . gen_full platform
 
 APP_TITLE       := Panic Park (recomp)
-APP_DESCRIPTION := Namco System 23 - ricompilazione statica
+APP_DESCRIPTION := Namco System 23 - static recompilation
 APP_AUTHOR      := recomp
 ICON            :=
 
-# cartella dell'app sulla SD (ROM, elf, bin, assets/, lang/, ui/, nvram.bin, panicprk.ini, log.txt)
+# app folder on the SD card (ROMs, elf, bin, assets/, lang/, ui/, nvram.bin, panicprk.ini, log.txt)
 S3DS_DIR ?= sdmc:/3ds/panicprk
 OPT      ?= -O2
 
 ARCH     := -march=armv6k -mtune=mpcore -mfloat-abi=hard -mtp=soft
-# -w: il codice generato ha moltissime label inutilizzate
+# -w: the generated code has lots of unused labels
 CFLAGS   := -g -w $(OPT) -mword-relocations -ffunction-sections $(ARCH)
 CFLAGS   += $(INCLUDE) -D__3DS__ -DS23_POLL_TICK -DS23_3DS_DIR=\"$(S3DS_DIR)\"
 CXXFLAGS := $(CFLAGS) -fno-rtti -fno-exceptions -std=gnu++17

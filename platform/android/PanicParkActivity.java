@@ -10,8 +10,8 @@ import android.os.Environment;
 import android.provider.Settings;
 import org.libsdl.app.SDLActivity;
 
-// Come SDLActivity, ma all'avvio chiede il permesso di leggere la cartella PanicPark nella memoria del telefono
-// (Android 11+: "accesso a tutti i file"; Android 6-10: permesso di lettura/scrittura della memoria).
+// Like SDLActivity, but at startup it asks for permission to read the PanicPark folder in phone storage
+// (Android 11+: "all files access"; Android 6-10: storage read/write permission).
 public class PanicParkActivity extends SDLActivity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {

@@ -1,6 +1,6 @@
-// Grafica del menu (launcher): testo con font veri (Bangers / Lilita One, contorno nero e gradiente), forme
-// (pulsanti inclinati, riquadri arrotondati, interruttori), immagini facoltative ui/background.png e ui/logo.png.
-// Tutto con SDL_Renderer + SDL_RenderGeometry: funziona con qualsiasi renderer (OpenGL, GLES, software, Wii U).
+// Menu (launcher) graphics: text with real fonts (Bangers / Lilita One, black outline and gradient), shapes
+// (slanted buttons, rounded boxes, switches), optional images ui/background.png and ui/logo.png.
+// Everything with SDL_Renderer + SDL_RenderGeometry: works with any renderer (OpenGL, GLES, software, Wii U).
 #pragma once
 #ifdef USE_SDL
 #include <SDL.h>
@@ -32,7 +32,7 @@ inline SDL_Color mix(SDL_Color a, SDL_Color b, float t) {
 }
 inline SDL_Color alpha(SDL_Color c, float k) { c.a = (Uint8)std::max(0.f, std::min(255.f, c.a * k)); return c; }
 
-// tavolozza (dal cabinato: mare blu, lettere giallo->rosso con il contorno nero, fascia a zig-zag multicolore)
+// palette (from the cabinet: blue sea, yellow->red letters with black outline, multicoloured zig-zag band)
 static const SDL_Color INK = {12, 10, 20, 255}, WHITE = {255, 255, 255, 255}, YEL = {255, 228, 40, 255}, ORA = {255, 140, 20, 255},
                        RED = {232, 32, 30, 255}, SEA0 = {40, 120, 205, 255}, SEA1 = {10, 40, 100, 255}, NAVY = {12, 28, 66, 255},
                        CYAN = {120, 220, 255, 255}, GREEN = {30, 170, 80, 255}, PINK = {255, 80, 160, 255}, GREY = {170, 185, 210, 255};
@@ -53,14 +53,14 @@ struct Image { SDL_Texture* tex = nullptr; int w = 0, h = 0; };
 struct Ui {
     SDL_Renderer* ren = nullptr;
     FontTex disp, body;
-    SDL_Texture* chev = nullptr;                    // fascia a zig-zag (pulsante scelto)
+    SDL_Texture* chev = nullptr;                    // zig-zag band (selected button)
     Image bg, logo;
-    float W = 1280, H = 720;                        // area logica corrente
+    float W = 1280, H = 720;                        // current logical area
     std::vector<SDL_Vertex> vb; std::vector<int> ib;
 
-    // ------------------------------------------------------------ caricamento
+    // ------------------------------------------------------------ loading
     static SDL_Texture* tex_rgba(SDL_Renderer* r, const unsigned char* px, int w, int h) {
-        SDL_Texture* t = SDL_CreateTexture(r, SDL_PIXELFORMAT_RGBA32, SDL_TEXTUREACCESS_STATIC, w, h);   // byte R,G,B,A (anche big endian)
+        SDL_Texture* t = SDL_CreateTexture(r, SDL_PIXELFORMAT_RGBA32, SDL_TEXTUREACCESS_STATIC, w, h);   // R,G,B,A bytes (also big endian)
         if (!t) return nullptr;
         SDL_UpdateTexture(t, nullptr, px, w * 4);
         SDL_SetTextureBlendMode(t, SDL_BLENDMODE_BLEND); SDL_SetTextureScaleMode(t, SDL_ScaleModeLinear);
@@ -85,8 +85,8 @@ struct Ui {
         unsigned char* p = stbi_load(path.c_str(), &w, &h, &n, 4);
         if (!p) return im;
         std::vector<unsigned char> cur(p, p + (size_t)w * h * 4); stbi_image_free(p);
-        int lim = 2048;                             // limite sicuro delle texture GLES2 (e meno memoria su console)
-        while (w > lim || h > lim) {                // dimezza con la media 2x2
+        int lim = 2048;                             // safe GLES2 texture limit (and less memory on consoles)
+        while (w > lim || h > lim) {                // halves with a 2x2 average
             int nw = w / 2, nh = h / 2; std::vector<unsigned char> o((size_t)nw * nh * 4);
             for (int y = 0; y < nh; y++) for (int x = 0; x < nw; x++) for (int c = 0; c < 4; c++)
                 o[((size_t)y * nw + x) * 4 + c] = (unsigned char)((cur[((size_t)(2 * y) * w + 2 * x) * 4 + c] + cur[((size_t)(2 * y) * w + 2 * x + 1) * 4 + c] +
@@ -110,17 +110,17 @@ struct Ui {
         ren = r;
         load_font(disp, uifont::display); load_font(body, uifont::body); make_chevrons();
         bg = load_png(uidir + "/background.png"); logo = load_png(uidir + "/logo.png");
-        printf("menu: sfondo %s, logo %s (cartella %s)\n", bg.tex ? "si" : "no", logo.tex ? "si" : "no", uidir.c_str());
+        printf("menu: background %s, logo %s (folder %s)\n", bg.tex ? "yes" : "no", logo.tex ? "yes" : "no", uidir.c_str());
     }
 
-    // ------------------------------------------------------------ geometria
+    // ------------------------------------------------------------ geometry
     void flush(SDL_Texture* t) {
         if (!vb.empty()) SDL_RenderGeometry(ren, t, vb.data(), (int)vb.size(), ib.empty() ? nullptr : ib.data(), (int)ib.size());
         vb.clear(); ib.clear();
     }
-    // SDL rifiuta l'intero disegno se una coordinata u/v esce anche di poco da 0..1 (arrotondamenti): si limita qui
+    // SDL rejects the whole draw if a u/v coordinate goes even slightly outside 0..1 (rounding): clamp here
     void vtx(float x, float y, SDL_Color c, float u = 0, float v = 0) { u = u < 0 ? 0 : u > 1 ? 1 : u; v = v < 0 ? 0 : v > 1 ? 1 : v; SDL_Vertex q; q.position = {x, y}; q.color = c; q.tex_coord = {u, v}; vb.push_back(q); }
-    // poligono convesso (ventaglio), colore secondo la quota tra y0 e y1
+    // convex polygon (fan), colour according to the height between y0 and y1
     void poly(const std::vector<SDL_FPoint>& p, SDL_Color c0, SDL_Color c1, float y0, float y1, SDL_Texture* t = nullptr, SDL_FRect uvr = {0, 0, 1, 1}, float bx = 0, float bw = 1) {
         if (p.size() < 3) return;
         int base = (int)vb.size(); float cx = 0, cy = 0; for (auto& q : p) { cx += q.x; cy += q.y; } cx /= p.size(); cy /= p.size();
@@ -150,12 +150,12 @@ struct Ui {
         poly(p, c, c, cy - r, cy + r);
     }
     void tri(float x0, float y0, float x1, float y1, float x2, float y2, SDL_Color c) { poly({{x0, y0}, {x1, y1}, {x2, y2}}, c, c, 0, 1); }
-    // freccia piena verso sinistra (d = -1) o destra (d = 1)
+    // solid arrow pointing left (d = -1) or right (d = 1)
     void arrow(float cx, float cy, float s, int d, SDL_Color c, bool outline = true) {
         if (outline) tri(cx - d * s * 0.62f, cy - s * 0.95f, cx + d * s * 0.8f, cy, cx - d * s * 0.62f, cy + s * 0.95f, INK);
         tri(cx - d * s * 0.4f, cy - s * 0.62f, cx + d * s * 0.5f, cy, cx - d * s * 0.4f, cy + s * 0.62f, c);
     }
-    // stella a punte (scoppio da fumetto) dietro il pulsante scelto
+    // pointed star (comic burst) behind the selected button
     void burst(float cx, float cy, float rx, float ry, int n, float rot, SDL_Color c) {
         std::vector<SDL_FPoint> p;
         for (int i = 0; i < 2 * n; i++) { float a = rot + i * 3.14159265f / n, k = (i & 1) ? 0.78f : 1.f; p.push_back({cx + rx * k * cosf(a), cy + ry * k * sinf(a)}); }
@@ -165,7 +165,7 @@ struct Ui {
         flush(nullptr);
     }
 
-    // ------------------------------------------------------------ testo
+    // ------------------------------------------------------------ text
     static uint32_t next_cp(const std::string& s, size_t& i) {
         uint32_t c = (uint8_t)s[i]; int n = 1;
         if (c >= 0xf0) { c &= 7; n = 4; } else if (c >= 0xe0) { c &= 15; n = 3; } else if (c >= 0xc0) { c &= 31; n = 2; }
@@ -177,12 +177,12 @@ struct Ui {
         for (size_t i = 0; i < s.size();) { int g = ft.find(next_cp(s, i)); if (g < 0) g = ft.find('?'); if (g >= 0) w += ft.f->g[g].adv4 / 4.f * sc; }
         return w;
     }
-    // y = centro verticale delle maiuscole; align: 0 sinistra, 1 centro, 2 destra. Ritorna la larghezza.
+    // y = vertical centre of the capitals; align: 0 left, 1 centre, 2 right. Returns the width.
     float text(const FontTex& ft, float x, float cy, const std::string& s, float px, SDL_Color c0, SDL_Color c1,
                SDL_Color oc = INK, bool outline = true, bool shadow = true, int align = 0, float maxw = 0) {
         if (!ft.tex || s.empty()) return 0;
         float w = text_w(ft, s, px);
-        if (maxw > 0 && w > maxw) { px *= maxw / w; w = maxw; }      // si restringe per stare nello spazio
+        if (maxw > 0 && w > maxw) { px *= maxw / w; w = maxw; }      // shrinks to fit the space
         const float sc = px / ft.f->size;
         if (align == 1) x -= w / 2; else if (align == 2) x -= w;
         const float top = cy - (ft.cap_top + ft.cap_bot) / 2 * sc, ct = top + ft.cap_top * sc, cb = top + ft.cap_bot * sc;
@@ -209,14 +209,14 @@ struct Ui {
         return w;
     }
 
-    // ------------------------------------------------------------ sfondo
+    // ------------------------------------------------------------ background
     void background(float t, float dim) {
         if (bg.tex) {
             float s = std::max(W / bg.w, H / bg.h) * 1.10f;
             float dw = bg.w * s, dh = bg.h * s;
             float ox = (W - dw) / 2 + sinf(t * 0.11f) * (dw - W) * 0.4f, oy = (H - dh) / 2 + cosf(t * 0.07f) * (dh - H) * 0.4f;
             SDL_FRect d{ox, oy, dw, dh}; SDL_RenderCopyF(ren, bg.tex, nullptr, &d);
-        } else {                                       // mare a spirale disegnato
+        } else {                                       // drawn spiral sea
             rect(0, 0, W, H, rgba(70, 170, 230), SEA1);
             for (int i = 14; i >= 1; i--) {
                 float r = i * std::max(W, H) * 0.075f + fmodf(t * 18.f, std::max(W, H) * 0.075f);
@@ -224,7 +224,7 @@ struct Ui {
                 SDL_Color c = (i & 1) ? rgba(30, 110, 190, 255) : rgba(45, 135, 210, 255);
                 poly(p, c, mix(c, SEA1, 0.4f), H * 0.62f - r * 0.55f, H * 0.62f + r * 0.55f);
             }
-            for (int i = 0; i < 6; i++) {               // nuvole
+            for (int i = 0; i < 6; i++) {               // clouds
                 float cx = fmodf(i * 263.f + t * (8 + i * 2), W + 400) - 200, cy = 60 + (i * 97) % 220;
                 for (int k = 0; k < 4; k++) circle(cx + k * 34 - 50, cy + ((k & 1) ? -14 : 6), 34 + (k == 1 ? 12 : 0), rgba(235, 248, 255, 200));
             }
@@ -232,7 +232,7 @@ struct Ui {
         rect(0, 0, W, H * 0.55f, alpha(NAVY, dim * 0.55f), alpha(NAVY, dim * 0.25f));
         rect(0, H * 0.55f, W, H * 0.45f, alpha(NAVY, dim * 0.25f), alpha(NAVY, dim * 0.95f));
     }
-    // logo: immagine ui/logo.png oppure titolo disegnato col font
+    // logo: image ui/logo.png or a title drawn with the font
     void title(float cx, float cy, float maxw, float maxh, float t) {
         float bob = sinf(t * 2.1f) * 5.f, sc = 1.f + sinf(t * 1.3f) * 0.012f;
         if (logo.tex) {

@@ -1,15 +1,15 @@
-// Disegno del 3D (C435) e composizione finale su GPU: OpenGL 3.0+ (PC) o OpenGL ES 3.0 (Android, Switch).
+// 3D drawing (C435) and final compositing on the GPU: OpenGL 3.0+ (PC) or OpenGL ES 3.0 (Android, Switch).
 //
-// La CPU fa quello che faceva gia' (g3d::prepare): trasforma, illumina, proietta e ordina i poligoni. Al posto del
-// rasterizzatore software, i poligoni (gia' nell'ordine di disegno, senza z-buffer) vanno alla GPU come triangoli, e il
-// fragment shader rifa' esattamente scanline() di gpu3d.h: mappa dei tile, texrom a 8 bit, palette, stencil del C412,
-// sfumature, alpha/media con lo sfondo, ritaglio per poligono (finestra rettangolare e trapezio del monitor).
-// Le ROM grafiche (texrom 32 MB, mappa dei tile) si caricano una volta come texture intere; palette, stencil, dati dei
-// poligoni e livello del testo si aggiornano a ogni fotogramma. La composizione (sfondo, 3D, testo, gamma) e' un
-// secondo shader che scrive nella texture di SDL, che poi la mostra come prima (OSD, tasti a tocco compresi).
+// The CPU does what it already did (g3d::prepare): transforms, lights, projects and sorts the polygons. Instead of the
+// software rasteriser, the polygons (already in drawing order, no z-buffer) go to the GPU as triangles, and the
+// the fragment shader redoes exactly gpu3d.h's scanline(): tile map, 8-bit texrom, palette, C412 stencil,
+// shading, alpha/average with the background, per-polygon clipping (rectangular window and the monitor's trapezoid).
+// The graphics ROMs (32 MB texrom, tile map) are loaded once as whole textures; palettes, stencil, data of the
+// polygons and text layer are updated every frame. Compositing (background, 3D, text, gamma) is a
+// second shader that writes into SDL's texture, which then shows it as before (OSD and touch buttons included).
 //
-// Niente header di OpenGL: tipi, costanti e funzioni sono dichiarati qui e caricati con SDL_GL_GetProcAddress, cosi'
-// lo stesso file compila su Windows (mingw), Linux, Android e Switch.
+// No OpenGL headers: types, constants and functions are declared here and loaded with SDL_GL_GetProcAddress, so
+// the same file builds on Windows (mingw), Linux, Android and Switch.
 #pragma once
 #include <SDL.h>
 #include <cstddef>
@@ -21,7 +21,7 @@
 namespace gl3d {
 using g3d::s32;
 
-// ---------------------------------------------------------------- tipi e funzioni OpenGL (caricati a runtime)
+// ---------------------------------------------------------------- OpenGL types and functions (loaded at runtime)
 typedef unsigned int GLenum; typedef unsigned int GLuint; typedef int GLint; typedef int GLsizei; typedef float GLfloat;
 typedef unsigned char GLboolean; typedef char GLchar; typedef ptrdiff_t GLsizeiptr; typedef ptrdiff_t GLintptr; typedef unsigned int GLbitfield;
 #if defined(_WIN32) && !defined(_WIN64)
@@ -76,29 +76,29 @@ enum : GLenum {
     GL_VERSION = 0x1F02, GL_RENDERER = 0x1F01, GL_SHADING_LANGUAGE_VERSION = 0x8B8C,
 };
 
-// ---------------------------------------------------------------- dati di un fotogramma (preparati dal thread del disegno)
-struct Vtx { float x, y, w, u, v, i; uint32_t pid; };          // x, y: pixel della destinazione; w: profondita' (prospettiva)
+// ---------------------------------------------------------------- frame data (prepared by the render thread)
+struct Vtx { float x, y, w, u, v, i; uint32_t pid; };          // x, y: destination pixels; w: depth (perspective)
 struct Frame {
-    int W = 640, H = 480, xoff = 0, W43 = 640;                   // destinazione, margine e larghezza 4:3 (widescreen)
+    int W = 640, H = 480, xoff = 0, W43 = 640;                   // target, margin and 4:3 width (widescreen)
     bool have3d = false;
     std::vector<Vtx> vtx;
-    std::vector<uint32_t> pu; std::vector<float> pf;               // per poligono: 4 x uvec4, 2 x vec4 (vedi export_polys)
-    std::vector<uint32_t> pal;                                     // 0x8000 colori 0xRRGGBB
-    std::vector<uint16_t> sten;                                    // SRAM del C412 (0x20000 parole)
-    std::vector<uint32_t> text;                                    // livello del testo 640x480: 0 = trasparente, altrimenti 0x01RRGGBB
+    std::vector<uint32_t> pu; std::vector<float> pf;               // per polygon: 4 x uvec4, 2 x vec4 (see export_polys)
+    std::vector<uint32_t> pal;                                     // 0x8000 colours 0xRRGGBB
+    std::vector<uint16_t> sten;                                    // C412 SRAM (0x20000 words)
+    std::vector<uint32_t> text;                                    // 640x480 text layer: 0 = transparent, otherwise 0x01RRGGBB
     uint32_t bg[3] = {0, 0, 0}; uint8_t gamma[256 * 4];
-    uint64_t prep_ns = 0;                                          // tempo di CPU per prepararlo (statistiche)
+    uint64_t prep_ns = 0;                                          // CPU time to prepare it (statistics)
 };
 
-// I poligoni gia' ordinati di g3d::prepare diventano triangoli + dati per poligono. Stesse regole di tri()/scanline():
-// coordinate relative alla finestra del poligono, ritaglio rettangolare e trapezio calcolati per riga.
+// The polygons already sorted by g3d::prepare become triangles + per-polygon data. Same rules as tri()/scanline():
+// coordinates relative to the polygon's window, rectangular and trapezoid clipping computed per line.
 static void export_polys(const g3d::Frame& F, const std::vector<int>& order, Frame& G, double sc, int xoff) {
     G.vtx.clear(); G.pu.clear(); G.pf.clear();
     const int HH = (int)std::lround(480 * sc), WW = (int)std::lround(640 * sc);
     uint32_t pid = 0;
     for (int oi : order) {
         const g3d::Poly& p = F.polys[oi]; const g3d::RD& rd = p.rd;
-        // ritaglio (come scanline): finestra della viewport, schermo, limiti di tri()
+        // clipping (like scanline): viewport window, screen, tri() limits
         s32 cl = (s32)std::lround(((320 - rd.vp_sx) + rd.vp_ox) * sc), cr = (s32)std::lround(((320 + rd.vp_sx) + rd.vp_ox) * sc);
         const s32 ct = (s32)std::lround(((240 - rd.vp_sy) - rd.vp_oy) * sc); s32 cb = (s32)std::lround(((240 + rd.vp_sy) - rd.vp_oy) * sc);
         if (xoff) { const bool full = rd.vp_sx >= 320 && rd.vp_ox == 0; cl += xoff; cr += xoff; if (full) { cl = 0; cr = G.W; } }
@@ -108,13 +108,13 @@ static void export_polys(const g3d::Frame& F, const std::vector<int>& order, Fra
         if (x0 >= x1 || y0 >= y1) continue;
         uint32_t fl = (rd.stencil ? 1u : 0) | (rd.shade ? 2u : 0) | (rd.pfade ? 4u : 0) | (rd.blend ? 8u : 0) | (rd.alpha_enabled ? 16u : 0);
         float K[2] = {0, 0}, M[2] = {0, 0};
-        if (rd.slant) {                                             // trapezio: x limite = K + M * riga (poi arrotondato, come lround)
+        if (rd.slant) {                                             // trapezoid: limit x = K + M * row (then rounded, like lround)
             fl |= 32u; const double cx = 320 + rd.vp_ox;
             for (int k = 0; k < 2; k++) {
                 const double a = rd.cpl[k][0], b = rd.cpl[k][1], c = rd.cpl[k][2]; if (std::fabs(a) < 1e-9) continue;
                 // bound(oy) = -(b * syw + c * cfov) / a, syw = (240 - vp_oy) - (oy + 0.5) / sc; x = (cx + bound) * sc + xoff
                 M[k] = (float)(b / a); K[k] = (float)(sc * cx + xoff - (sc * (b * (240 - rd.vp_oy) + c * rd.cfov) - b * 0.5) / a);
-                fl |= 64u << k; if ((a > 0) == (c > 0)) fl |= 256u << k;   // 256: limite sinistro, altrimenti destro
+                fl |= 64u << k; if ((a > 0) == (c > 0)) fl |= 256u << k;   // 256: left limit, otherwise right
             }
         }
         const u32 pens = rd.pens;
@@ -128,7 +128,7 @@ static void export_polys(const g3d::Frame& F, const std::vector<int>& order, Fra
             G.vtx.push_back(Vtx{(float)(q.x * sc + xorg), (float)(q.y * sc + ct), w, q.p[1] * w, q.p[2] * w, q.p[3] * w, pid});
         };
         auto tri = [&](const g3d::PV& a, const g3d::PV& b, const g3d::PV& c) { put(a); put(b); put(c); };
-        if (p.nv == 4) {                                            // stessa diagonale di draw_poly (quad concavi)
+        if (p.nv == 4) {                                            // same diagonal as draw_poly (concave quads)
             auto side = [&](const g3d::PV& a, const g3d::PV& b, const g3d::PV& c) { return (b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x); };
             const double s1 = side(p.pv[0], p.pv[2], p.pv[1]), s3 = side(p.pv[0], p.pv[2], p.pv[3]);
             if (s1 * s3 > 0) { tri(p.pv[1], p.pv[2], p.pv[3]); tri(p.pv[1], p.pv[3], p.pv[0]); }
@@ -168,8 +168,8 @@ void main() {
         if ((fl & 128u) != 0u) { int b = int(floor(f0.w + f1.x * yy + 0.5)); if ((fl & 512u) != 0u) cl = max(cl, b); else cr = min(cr, b); }
     }
     if (px < cl || px >= cr) discard;
-    // +1/1000: le coordinate costanti lungo un lato (es. v = 2880 ai vertici) interpolate in float arrivano a 2879,9998 e
-    // troncate prendevano la riga di texel sopra (il software, in double, resta su 2880)
+    // +1/1000: coordinates that are constant along an edge (e.g. v = 2880 at the vertices) interpolated in float reach 2879.9998 and,
+    // truncated, took the row of texels above (the software, in double, stays at 2880)
     uint tx = uint(int(vUVI.x + (vUVI.x >= 0.0 ? 0.001 : -0.001))), ty = uint(int(vUVI.y + (vUVI.y >= 0.0 ? 0.001 : -0.001)));
     if ((fl & 1u) != 0u) {
         uint offs = ((ty << 6) | (tx >> 4)) & 0x1ffffu;
@@ -226,7 +226,7 @@ void main() {
 }
 )";
 
-// ---------------------------------------------------------------- motore
+// ---------------------------------------------------------------- engine
 struct Renderer {
     bool ok = false, es = false; std::string err;
     GLuint p3d = 0, pcomp = 0, vbo = 0, vboq = 0, vao = 0;
@@ -237,7 +237,7 @@ struct Renderer {
     uint64_t frames = 0;
 
     bool load() {
-#define S23_GLLOAD(ret, name, args) name = (PFN_##name)SDL_GL_GetProcAddress(#name); if (!name) { err = std::string("funzione mancante: ") + #name; if (std::string(#name) != "glGenVertexArrays" && std::string(#name) != "glBindVertexArray") return false; }
+#define S23_GLLOAD(ret, name, args) name = (PFN_##name)SDL_GL_GetProcAddress(#name); if (!name) { err = std::string("missing function: ") + #name; if (std::string(#name) != "glGenVertexArrays" && std::string(#name) != "glBindVertexArray") return false; }
         S23_GLFUNCS(S23_GLLOAD)
 #undef S23_GLLOAD
         err.clear(); return true;
@@ -267,24 +267,24 @@ struct Renderer {
         glTexImage2D(GL_TEXTURE_2D, 0, ifmt, w, h, 0, fmt, type, data); return t;
     }
 
-    // da chiamare con il contesto GL di SDL attivo (dopo SDL_CreateRenderer). Carica anche le ROM grafiche.
+    // to be called with SDL's GL context current (after SDL_CreateRenderer). Also loads the graphics ROMs.
     bool init() {
         if (!load()) return false;
         const char* ver = (const char*)glGetString(GL_VERSION); es = ver && strstr(ver, "OpenGL ES");
         printf("GPU: %s | %s\n", ver ? ver : "?", (const char*)glGetString(GL_RENDERER)); fflush(stdout);
-        if (!g3d::R.ok) { err = "ROM grafiche non caricate"; return false; }
+        if (!g3d::R.ok) { err = "graphics ROMs not loaded"; return false; }
         p3d = program(VS3D, FS3D, {"aPos", "aUVI", "aPid"}); pcomp = program(VSCOMP, FSCOMP, {"aPos"});
         if (!p3d || !pcomp) return false;
         GLint prevTex = 0, prevAct = 0; glGetIntegerv(GL_ACTIVE_TEXTURE, &prevAct); glActiveTexture(GL_TEXTURE0 + 7);
         glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
-        // SDL lascia GL_UNPACK_ROW_LENGTH impostato dopo i suoi caricamenti (per esempio le immagini del menu):
-        // le ROM grafiche verrebbero lette con le righe sfalsate (texture tutte rumore). Si azzera e poi si ripristina.
+        // SDL leaves GL_UNPACK_ROW_LENGTH set after its uploads (for example the menu images):
+        // the graphics ROMs would be read with skewed rows (textures all noise). It is reset and then restored.
         GLint prevRow = 0; glGetIntegerv(GL_UNPACK_ROW_LENGTH, &prevRow); glPixelStorei(GL_UNPACK_ROW_LENGTH, 0);
-        // texrom: 32 MB di pen a 8 bit come array 2048 x 2048 x 8 (ES 3.0 garantisce solo 2048 per lato)
+        // texrom: 32 MB of 8-bit pens as a 2048 x 2048 x 8 array (ES 3.0 only guarantees 2048 per side)
         { std::vector<uint8_t> z; const uint8_t* src = g3d::R.texrom; if (g3d::R.tex_n < 0x2000000) { z.assign(0x2000000, 0); memcpy(z.data(), g3d::R.texrom, g3d::R.tex_n); src = z.data(); }
           glGenTextures(1, &tRom); glBindTexture(GL_TEXTURE_2D_ARRAY, tRom); tex_params(GL_TEXTURE_2D_ARRAY);
           glTexImage3D(GL_TEXTURE_2D_ARRAY, 0, GL_R8UI, 2048, 2048, 8, 0, GL_RED_INTEGER, GL_UNSIGNED_BYTE, src); }
-        // mappa dei tile: offset nella texrom (25 bit) + attributi (3 bit) in un intero a 32 bit
+        // tile map: offset into the texrom (25 bits) + attributes (3 bits) in a 32-bit integer
         { const size_t n = std::max<size_t>(g3d::R.tm_n, (size_t)(g3d::R.tileid_mask | 0xff) + 1); const int rows = (int)((n + 4095) / 4096);
           std::vector<uint32_t> tm((size_t)rows * 4096, 0);
           for (size_t i = 0; i < g3d::R.tm_n; i++) tm[i] = (g3d::R.tm_decoded[i] & 0x1ffffff) | ((uint32_t)(g3d::R.tm_attr[i] & 7) << 25);
@@ -304,11 +304,11 @@ struct Renderer {
         glUseProgram(pcomp);
         static const char* sc[] = {"u3d", "uText", "uGamma"}; for (int i = 0; i < 3; i++) glUniform1i(glGetUniformLocation(pcomp, sc[i]), i);
         glUseProgram(0);
-        GLenum e = glGetError(); if (e != GL_NO_ERROR) { char b[64]; snprintf(b, sizeof b, "errore GL 0x%x all'avvio", e); err = b; return false; }
+        GLenum e = glGetError(); if (e != GL_NO_ERROR) { char b[64]; snprintf(b, sizeof b, "GL error 0x%x at startup", e); err = b; return false; }
         ok = true; return true;
     }
 
-    // stato GL di SDL: salvato e rimesso intorno al nostro disegno (SDL tiene una cache dello stato)
+    // SDL's GL state: saved and restored around our drawing (SDL keeps a state cache)
     struct Saved { GLint fb, vp[4], prog, act, tex[8], abuf, vao; GLboolean blend, scis, depth, cull; GLint bsr, bdr, bsa, bda, unpack, rowlen; };
     void save(Saved& s) {
         glGetIntegerv(GL_FRAMEBUFFER_BINDING, &s.fb); glGetIntegerv(GL_VIEWPORT, s.vp); glGetIntegerv(GL_CURRENT_PROGRAM, &s.prog);
@@ -320,7 +320,7 @@ struct Renderer {
         glGetIntegerv(GL_UNPACK_ALIGNMENT, &s.unpack); glGetIntegerv(GL_UNPACK_ROW_LENGTH, &s.rowlen);
     }
     void restore(const Saved& s) {
-        if (vao) glBindVertexArray((GLuint)s.vao);                 // gli attributi abilitati stanno nel nostro VAO: quello di SDL resta com'era
+        if (vao) glBindVertexArray((GLuint)s.vao);                 // the enabled attributes live in our VAO: SDL's stays as it was
         else { glDisableVertexAttribArray(0); glDisableVertexAttribArray(1); glDisableVertexAttribArray(2); }
         glBindBuffer(GL_ARRAY_BUFFER, (GLuint)s.abuf);
         glBindTexture(GL_TEXTURE_2D_ARRAY, 0);
@@ -332,22 +332,22 @@ struct Renderer {
         glBlendFuncSeparate((GLenum)s.bsr, (GLenum)s.bdr, (GLenum)s.bsa, (GLenum)s.bda); glPixelStorei(GL_UNPACK_ALIGNMENT, s.unpack); glPixelStorei(GL_UNPACK_ROW_LENGTH, s.rowlen);
     }
 
-    // disegna il fotogramma nella texture GL "target" (quella della texture di SDL), grande F.W x F.H
+    // draws the frame into the GL texture "target" (SDL's texture), F.W x F.H in size
     bool draw(const Frame& F, GLuint target) {
         if (!ok) return false;
         Saved sv; save(sv);
         glDisable(GL_SCISSOR_TEST); glDisable(GL_DEPTH_TEST); glDisable(GL_CULL_FACE); glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
-        glPixelStorei(GL_UNPACK_ROW_LENGTH, 0);                       // SDL la lascia impostata dopo i suoi caricamenti (testo dell'OSD): le righe sarebbero lette troppo lunghe
+        glPixelStorei(GL_UNPACK_ROW_LENGTH, 0);                       // SDL leaves it set after its uploads (OSD text): the rows would be read too long
         if (vao) glBindVertexArray(vao);
-        // 3D in un FBO della stessa misura dell'uscita
+        // 3D into an FBO the same size as the output
         if (F.have3d) {
             if (w3d != F.W || h3d != F.H) {
-                // nuova texture prima di cancellare la vecchia: cosi' non riceve lo stesso numero (con lo stesso numero
-                // l'FBO restava legato alla texture cancellata e il 3D usciva piccolo o non usciva, es. a schermo intero)
+                // new texture before deleting the old one: so it doesn't get the same number (with the same number
+                // the FBO stayed bound to the deleted texture and the 3D came out small or not at all, e.g. in full screen)
                 const GLuint old = t3d; glActiveTexture(GL_TEXTURE0); t3d = new_tex2d(GL_RGBA8, F.W, F.H, GL_RGBA, GL_UNSIGNED_BYTE, nullptr); w3d = F.W; h3d = F.H;
                 glBindFramebuffer(GL_FRAMEBUFFER, fb3d); glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, t3d, 0);
                 if (old) glDeleteTextures(1, &old);
-                if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) { err = "FBO del 3D incompleto"; restore(sv); ok = false; return false; }
+                if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) { err = "3D FBO incomplete"; restore(sv); ok = false; return false; }
             }
             glBindFramebuffer(GL_FRAMEBUFFER, fb3d); glViewport(0, 0, F.W, F.H);
             glClearColor(0, 0, 0, 0); glClear(GL_COLOR_BUFFER_BIT);
@@ -378,11 +378,11 @@ struct Renderer {
                 glDisableVertexAttribArray(0); glDisableVertexAttribArray(1); glDisableVertexAttribArray(2);
             }
         }
-        // composizione nella texture di uscita
+        // compositing into the output texture
         glBindFramebuffer(GL_FRAMEBUFFER, fbOut);
-        // ogni volta: SDL, quando ricrea la sua texture (cambio di risoluzione), puo' ridare lo stesso numero
+        // every time: SDL, when it recreates its texture (resolution change), may hand out the same number
         glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, target, 0); outTex = target;
-        if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) { err = "FBO di uscita incompleto"; restore(sv); ok = false; return false; }
+        if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) { err = "Output FBO incomplete"; restore(sv); ok = false; return false; }
         glViewport(0, 0, F.W, F.H);
         glActiveTexture(GL_TEXTURE0 + 0); glBindTexture(GL_TEXTURE_2D, F.have3d ? t3d : 0);
         glActiveTexture(GL_TEXTURE0 + 1); glBindTexture(GL_TEXTURE_2D, tText);
@@ -396,12 +396,12 @@ struct Renderer {
         glDrawArrays(GL_TRIANGLES, 0, 6);
         GLenum e = glGetError();
         restore(sv); frames++;
-        if (e != GL_NO_ERROR) { char b[64]; snprintf(b, sizeof b, "errore GL 0x%x nel disegno", e); err = b; static int n = 0; if (n++ < 5) { printf("GPU: %s\n", err.c_str()); fflush(stdout); } }
+        if (e != GL_NO_ERROR) { char b[64]; snprintf(b, sizeof b, "GL error 0x%x while drawing", e); err = b; static int n = 0; if (n++ < 5) { printf("GPU: %s\n", err.c_str()); fflush(stdout); } }
         return true;
     }
-    // debug: legge un pixel dell'FBO del 3D (riga 0 = in alto)
+    // debug: reads a pixel of the 3D FBO (row 0 = top)
     uint32_t read3d(int x, int y) { Saved sv; save(sv); glBindFramebuffer(GL_FRAMEBUFFER, fb3d); uint8_t px[4] = {0}; glPixelStorei(GL_PACK_ALIGNMENT, 1); glReadPixels(x, y, 1, 1, GL_RGBA, GL_UNSIGNED_BYTE, px); restore(sv); return px[0] | (px[1] << 8) | (px[2] << 16); }
-    // legge l'ultima uscita (RGB, riga 0 = in alto) per i confronti con il disegno software
+    // reads the last output (RGB, row 0 = top) for comparisons with the software renderer
     void read_out(int W, int H, std::vector<uint8_t>& rgb) {
         Saved sv; save(sv); glBindFramebuffer(GL_FRAMEBUFFER, fbOut); glPixelStorei(GL_PACK_ALIGNMENT, 1);
         std::vector<uint8_t> px((size_t)W * H * 4); glReadPixels(0, 0, W, H, GL_RGBA, GL_UNSIGNED_BYTE, px.data());

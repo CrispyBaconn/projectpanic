@@ -1,5 +1,5 @@
-// Sub-CPU di Namco System 23: H8/3002 + bus + periferiche on-chip minime (ITU, SCI, ADC, porte, intc).
-// Mappa del bus e collegamenti da namcos23.cpp (MAME); registri on-chip da h83002.cpp. license:BSD-3-Clause (derivato da MAME)
+// Namco System 23 sub-CPU: H8/3002 + bus + minimal on-chip peripherals (ITU, SCI, ADC, ports, intc).
+// Bus map and wiring from namcos23.cpp (MAME); on-chip registers from h83002.cpp. license:BSD-3-Clause (derived from MAME)
 #pragma once
 #include <cstdlib>
 #include "h8cpu.h"
@@ -16,16 +16,16 @@ public:
     static constexpr double CLOCK = 16934400.0;                  // H8CLOCK
     H8Cpu cpu;
     std::vector<uint8_t> rom;                                    // 512 KB, big endian
-    uint8_t* shared = nullptr;                                   // 64 KB condivisi con la CPU principale (big endian)
+    uint8_t* shared = nullptr;                                   // 64 KB shared with the main CPU (big endian)
     uint8_t  ram[0x200] = {0};                                   // RAM on-chip 0xFFFD10-0xFFFF0F
-    uint8_t  reg[0x100] = {0};                                   // registri on-chip 0xFFFF00-0xFFFFFF
-    C352 snd;                                                     // chip audio C352 (0x280000-0x287fff)
-    // collegamenti verso l'esterno
-    std::function<void(uint16_t)> on_main_irq;                   // scrittura a 0x300020
-    std::function<void(int, uint8_t)> on_sci_tx;                 // byte trasmesso da SCI n
-    std::function<uint8_t()> p6_in, p8_in;                       // ingressi porte
+    uint8_t  reg[0x100] = {0};                                   // on-chip registers 0xFFFF00-0xFFFFFF
+    C352 snd;                                                     // C352 audio chip (0x280000-0x287fff)
+    // links to the outside
+    std::function<void(uint16_t)> on_main_irq;                   // write to 0x300020
+    std::function<void(int, uint8_t)> on_sci_tx;                 // byte transmitted by SCI n
+    std::function<uint8_t()> p6_in, p8_in;                       // port inputs
     uint8_t porta_out = 0, portb_out = 0, portb_in = 0, p6_out = 0, p8_out = 0;
-    // statistiche e log
+    // statistics and log
     std::map<uint32_t, uint64_t> onchip_acc, unmapped;
     uint64_t c352_writes = 0;
     bool log_acc = false; std::map<std::string, uint64_t> acc_log;
@@ -33,7 +33,7 @@ public:
 
     H8Sys() { hook(); init_state(); }
     void hook() { cpu.bus = this; cpu.user = this; cpu.on_update_irq_filter = [](void* u) { ((H8Sys*)u)->compute_irq(); };
-        /* IRQ a fronte: il flag ISR si azzera all'accettazione */ cpu.on_irq_taken = [](void* u, int v) { H8Sys* h = (H8Sys*)u; if (v >= 12 && v <= 17 && (h->iscr & (1 << (v - 12)))) h->isr &= ~(1 << (v - 12)); };
+        /* Edge-triggered IRQ: the ISR flag is cleared on acceptance */ cpu.on_irq_taken = [](void* u, int v) { H8Sys* h = (H8Sys*)u; if (v >= 12 && v <= 17 && (h->iscr & (1 << (v - 12)))) h->isr &= ~(1 << (v - 12)); };
     }
 
     bool load_rom(const std::string& path) {
@@ -42,9 +42,9 @@ public:
     }
     void reset() { snd.reset(); snd.last_cycle = 0; init_state(); cpu = H8Cpu(); hook(); cpu.do_reset(); }
 
-    // esegue istruzioni finche' non si raggiunge il numero di cicli richiesto
-    // in SLEEP senza interrupt pendenti si avanza a blocchi di 64 cicli invece che di 4 (le periferiche vengono
-    // aggiornate lo stesso: al massimo 64 cicli, ~4 us, di ritardo nel risveglio). S23_H8SLOW = come prima.
+    // runs instructions until the requested number of cycles is reached
+    // in SLEEP with no pending interrupts we advance in blocks of 64 cycles instead of 4 (the peripherals are
+    // updated anyway: at most 64 cycles, ~4 us, of wake-up delay). S23_H8SLOW = as before.
     void run_to(uint64_t cycles) {
         static const bool slow = getenv("S23_H8SLOW") != nullptr; if (slow) cpu.rom_code = false;
         static const bool noidle = slow || getenv("S23_H8NOIDLE") != nullptr;
@@ -54,44 +54,44 @@ public:
             if (!noidle && A == 0x2c0c && timeout_poll(cycles)) continue;
             if (!noidle && A + 4 <= rom.size() && rom[A] == 0x1a && (rom[A + 1] & 0xf0) == 0 && rom[A + 2] == 0x46 && rom[A + 3] == 0xfc && !cpu.m_irq_vector) { delay_loop(cycles); continue; }
             uint64_t c0 = cpu.m_cycles; if (pcprof_) pcprof_[A & 0x7ffff]++; cpu.step(); pend_ += cpu.m_cycles - c0;
-            if (pend_ >= TICK_Q || slow) flush_tick();      // periferiche aggiornate a blocchi di ~32 cicli
+            if (pend_ >= TICK_Q || slow) flush_tick();      // peripherals updated in blocks of ~32 cycles
             if (!noidle && cpu.m_NPC < A && A - cpu.m_NPC <= 24) idle_check(A, cycles);
         }
         flush_tick();
     }
-    // ---- attese a vuoto dell'H8 (circa il 75% delle sue istruzioni): attesa che la CPU principale cambi la RAM condivisa,
-    // attesa della seriale (TDRE), cicli di ritardo. Un salto all'indietro corto che torna con registri, flag e memoria
-    // identici e' un'attesa pura: l'uscita puo' dipendere solo da qualcosa di esterno, quindi si avanza il tempo fino al
-    // prossimo evento delle periferiche (timer, seriale, ADC) o alla fine del blocco (la CPU principale e le linee video
-    // si aggiornano tra un blocco e l'altro, ogni ~32 us). S23_H8NOIDLE=1 = come prima.
-    uint64_t wr_ = 0;                                            // scritture sul bus (per riconoscere un ciclo che non scrive)
+    // ---- H8 idle waits (about 75% of its instructions): waiting for the main CPU to change the shared RAM,
+    // waiting for the serial port (TDRE), delay loops. A short backward branch that comes back with registers, flags and memory
+    // identical is a pure wait: the outcome can only depend on something external, so time is advanced to the
+    // next peripheral event (timers, serial, ADC) or the end of the block (the main CPU and the video lines
+    // are updated between one block and the next, every ~32 us). S23_H8NOIDLE=1 = as before.
+    uint64_t wr_ = 0;                                            // bus writes (to recognise a loop that doesn't write)
     uint32_t idle_br_ = ~0u, idle_head_ = 0; uint16_t idle_r_[16]; uint8_t idle_ccr_ = 0; uint64_t idle_wr_ = 0, idle_c_ = 0;
     uint64_t idle_skipped = 0, delay_skipped = 0;
     void idle_check(uint32_t br, uint64_t limit) {
         if (br == idle_br_ && cpu.m_NPC == idle_head_ && wr_ == idle_wr_ && cpu.m_CCR == idle_ccr_ && !memcmp(idle_r_, cpu.m_R, sizeof idle_r_) && !cpu.m_irq_vector) {
             flush_tick();
             uint64_t to = limit, ev = next_event(); if (ev < to - cpu.m_cycles) to = cpu.m_cycles + ev;
-            const uint64_t it = cpu.m_cycles - idle_c_;          // durata di un giro
+            const uint64_t it = cpu.m_cycles - idle_c_;          // length of one iteration
             if (to > cpu.m_cycles + it) { uint64_t d = to - cpu.m_cycles; cpu.m_cycles += d; pend_ += d; idle_skipped += d; flush_tick(); }
         }
         idle_br_ = br; idle_head_ = cpu.m_NPC; idle_wr_ = wr_; idle_ccr_ = cpu.m_CCR; memcpy(idle_r_, cpu.m_R, sizeof idle_r_); idle_c_ = cpu.m_cycles;
     }
-    // "dec.b rX / bne -4": si fanno i giri per davvero solo per misurarne la durata, poi si salta al penultimo
+    // "dec.b rX / bne -4": the loop is really run only to measure its length, then we jump to the second-to-last iteration
     void delay_loop(uint64_t limit) {
         const uint32_t A = cpu.m_NPC; const int reg = rom[A + 1] & 0x0f;
-        uint64_t c0 = cpu.m_cycles; cpu.step(); cpu.step(); pend_ += cpu.m_cycles - c0;   // un giro intero (dec + bne)
+        uint64_t c0 = cpu.m_cycles; cpu.step(); cpu.step(); pend_ += cpu.m_cycles - c0;   // a full iteration (dec + bne)
         if (cpu.m_NPC != A || cpu.m_irq_vector) { if (pend_ >= TICK_Q) flush_tick(); return; }
         const unsigned v = cpu.r8_r(reg); if (v < 2) { if (pend_ >= TICK_Q) flush_tick(); return; }
         flush_tick();
-        const uint64_t it = cpu.m_cycles - c0; uint64_t n = v - 1;          // giri saltabili: si lascia l'ultimo (flag corretti)
+        const uint64_t it = cpu.m_cycles - c0; uint64_t n = v - 1;          // skippable iterations: the last one is kept (correct flags)
         uint64_t room = limit > cpu.m_cycles ? limit - cpu.m_cycles : 0; const uint64_t ev = next_event(); if (ev < room) room = ev;
         if (it && n * it > room) n = room / it;
         if (!n) return;
         cpu.r8_w(reg, (uint8_t)(v - n)); cpu.m_cycles += n * it; pend_ += n * it; delay_skipped += n * it; flush_tick();
     }
-    // pnp1vera 0x2c0c: attesa con timeout "finche' shared[0x4de1] == 0 e TCNT3 < E0" (risposta della CPU principale).
-    // Il registro letto (TCNT3) cambia a ogni giro, quindi idle_check non la riconosce: si avanza fino al timeout,
-    // al prossimo evento o alla fine del blocco. Si controllano i byte del codice, cosi' con un'altra ROM non fa nulla.
+    // pnp1vera 0x2c0c: wait with timeout "while shared[0x4de1] == 0 and TCNT3 < E0" (main CPU reply).
+    // The register read (TCNT3) changes on every iteration, so idle_check doesn't recognise it: we advance to the timeout,
+    // to the next event or the end of the block. The code bytes are checked, so with another ROM it does nothing.
     uint64_t timeout_skipped = 0;
     bool timeout_poll(uint64_t limit) {
         static const uint8_t pat[16] = {0x6a, 0x28, 0x00, 0x08, 0x4d, 0xe1, 0x46, 0x1a, 0x6b, 0x00, 0xff, 0x86, 0x1d, 0x80, 0x45, 0xf0};
@@ -103,11 +103,11 @@ public:
         uint64_t to = limit; const uint64_t tl = (uint64_t)(lim - t.tcnt) * d; const uint64_t tt = tl > t.acc ? tl - t.acc : 0;
         const uint64_t ev = next_event(); uint64_t room = std::min(tt, ev);
         if (to - cpu.m_cycles < room) room = to > cpu.m_cycles ? to - cpu.m_cycles : 0;
-        if (room < 64) return false;                              // poco da guadagnare: si esegue normalmente
+        if (room < 64) return false;                              // little to gain: run normally
         cpu.m_cycles += room; pend_ += room; timeout_skipped += room; flush_tick();
         return true;
     }
-    // cicli al prossimo evento delle periferiche che puo' cambiare un registro o sollevare un interrupt
+    // cycles to the next peripheral event that can change a register or raise an interrupt
     uint64_t next_event() {
         uint64_t m = ~0ull;
         for (int i = 0; i < 2; i++) {
@@ -123,9 +123,9 @@ public:
         }
         return m;
     }
-    // le periferiche (timer, seriali, ADC) avanzano a blocchi; prima di ogni accesso ai registri si recupera il ritardo
+    // the peripherals (timers, serial, ADC) advance in blocks; before every register access the delay is caught up
     static constexpr uint64_t TICK_Q = 32; uint64_t pend_ = 0;
-    uint32_t* pcprof_ = getenv("S23_H8PROF") ? new uint32_t[0x80000]() : nullptr; uint64_t pccyc_[2] = {0, 0};   // conteggio delle istruzioni per indirizzo (analisi)
+    uint32_t* pcprof_ = getenv("S23_H8PROF") ? new uint32_t[0x80000]() : nullptr; uint64_t pccyc_[2] = {0, 0};   // instruction count per address (analysis)
     void dump_prof(const char* path) { if (!pcprof_) return; FILE* f = fopen(path, "w"); if (!f) return; for (uint32_t a = 0; a < 0x80000; a++) if (pcprof_[a]) fprintf(f, "%06x %u\n", a, pcprof_[a]); fclose(f); }
     void flush_tick() { if (pend_) { uint64_t d = pend_; pend_ = 0; tick(d); } }
 
@@ -141,7 +141,7 @@ public:
         if (log_acc) unmapped[a & ~0xffu]++; return 0;
     }
     uint16_t r16(uint32_t a) override {
-        a &= 0xffffff; if (a < 0x7ffff && !rom.empty()) return (uint16_t)((rom[a] << 8) | rom[a + 1]);   // ROM: via veloce
+        a &= 0xffffff; if (a < 0x7ffff && !rom.empty()) return (uint16_t)((rom[a] << 8) | rom[a + 1]);   // ROM: fast path
         return (r8(a) << 8) | r8(a + 1);
     }
     void w8(uint32_t a, uint8_t v) override {
@@ -160,8 +160,8 @@ public:
         w8(a, v >> 8); w8(a + 1, v & 0xff);
     }
 
-    // ---------------------------------------------------------------- periferiche
-    struct Itu { uint8_t tcr = 0, tior = 0, tier = 0xf8, tsr = 0xf8; uint16_t tcnt = 0, gra = 0xffff, grb = 0xffff; uint64_t acc = 0; };   // acc: cicli non ancora contati (< prescaler)
+    // ---------------------------------------------------------------- peripherals
+    struct Itu { uint8_t tcr = 0, tior = 0, tier = 0xf8, tsr = 0xf8; uint16_t tcnt = 0, gra = 0xffff, grb = 0xffff; uint64_t acc = 0; };   // acc: cycles not yet counted (< prescaler)
     Itu itu[5]; uint8_t tstr = 0;
     static constexpr uint8_t ITU_BASE[5] = {0x64, 0x6e, 0x78, 0x82, 0x92};
 
@@ -170,27 +170,27 @@ public:
     bool adclog = getenv("S23_ADCLOG") != nullptr; int adclog_n = 0; uint8_t adcsr = 0, adcr = 0x7e; int64_t adc_left = 0;
     uint8_t iscr = 0, ier = 0, isr = 0, syscr = 0x09; uint16_t icr = 0;
 
-    bool adtrg = false;                                           // pin ADTRG (collegato al vblank): fronte di discesa con TRGE=1 avvia la conversione
+    bool adtrg = false;                                           // ADTRG pin (wired to vblank): falling edge with TRGE=1 starts the conversion
     void adtrg_w(bool st) { if (st == adtrg) return; adtrg = st; if (!st && (adcr & 0x80) && !(adcsr & 0x20)) { adcsr |= 0x20; adc_left = 134; } }
     void init_state() { memset(reg, 0, sizeof reg); memset(ram, 0, sizeof ram); for (auto& i : itu) i = Itu(); tstr = 0; sci[0] = Sci(); sci[1] = Sci(); adcsr = 0; adc_left = 0; iscr = ier = isr = 0; syscr = 0x09; icr = 0; }
 
-    // RTC4543 (SCI1 sincrona): 56 bit, LSB first, registri BCD secondi..anno; CE = PB5 & PA0
+    // RTC4543 (synchronous SCI1): 56 bits, LSB first, BCD registers seconds..year; CE = PB5 & PA0
     uint8_t rtc_regs[7] = {0}; int rtc_bit = 0; bool rtc_ce_prev = false;
     bool rtc_ce() const { return (portb_out & 0x20) && (porta_out & 1); }
-    std::function<void()> on_rtc_latch;                          // all'inizio di ogni lettura: aggiorna l'ora (dal PC)
+    std::function<void()> on_rtc_latch;                          // at the start of every read: updates the time (from the PC)
     void rtc_ce_update() { bool ce = rtc_ce(); if (ce && !rtc_ce_prev) { rtc_bit = 0; if (on_rtc_latch) on_rtc_latch(); } rtc_ce_prev = ce; }
-    uint8_t rtc_shift8() {                                       // 8 colpi di clock: l'RTC emette 8 bit (se selezionato)
+    uint8_t rtc_shift8() {                                       // 8 clock pulses: the RTC outputs 8 bits (if selected)
         uint8_t b = 0;
-        // flusso dell'RTC4543 (LSB prima): secondi 8, minuti 8, ore 8, giorno della settimana 4 bit, giorno 8, mese 8, anno 8 = 52 bit
+        // RTC4543 stream (LSB first): seconds 8, minutes 8, hours 8, weekday 4 bits, day 8, month 8, year 8 = 52 bits
         static const int W[7] = {8, 8, 8, 4, 8, 8, 8};
         auto bitat = [&](int n) { for (int f = 0; f < 7; f++) { if (n < W[f]) return (rtc_regs[f] >> n) & 1; n -= W[f]; } return 0; };
         if (rtc_ce()) for (int i = 0; i < 8; i++) { if (rtc_bit < 52) { b |= bitat(rtc_bit) << i; rtc_bit++; } }
         { static const bool lg = getenv("S23_RTCLOG") != nullptr; if (lg) printf("RTC shift ce=%d bit=%d -> %02x (pa=%02x pb=%02x smr=%02x scr=%02x)\n", rtc_ce(), rtc_bit, b, porta_out, portb_out, sci[1].smr, sci[1].scr); }
         return b;
     }
-    std::deque<uint8_t> rxq[2]; int64_t rx_wait[2] = {0, 0};      // byte in arrivo sulla SCI (a velocita' di linea)
+    std::deque<uint8_t> rxq[2]; int64_t rx_wait[2] = {0, 0};      // byte arriving on the SCI (at line speed)
     void sci_push(int n, const std::vector<uint8_t>& v) { for (uint8_t b : v) rxq[n].push_back(b); }
-    void sci_rx(int n, uint8_t b) {                              // un byte arriva sulla SCI n
+    void sci_rx(int n, uint8_t b) {                              // a byte arrives on SCI n
         Sci& s = sci[n];
         if (s.ssr & 0x40) { s.ssr |= 0x20; } else { s.rdr = b; s.ssr |= 0x40; }
         compute_irq();
@@ -202,7 +202,7 @@ public:
         bool changed = false;
         for (int c = 0; c < 5; c++) {
             if (!(tstr & (1 << c))) continue; Itu& t = itu[c]; int d = ipsc(t.tcr); if (!d) continue;
-            int sh = t.tcr & 3; t.acc += dc; uint32_t n = (uint32_t)(t.acc >> sh); t.acc &= (uint64_t)(d - 1);   // d = 1 << sh (intero, niente divisioni)
+            int sh = t.tcr & 3; t.acc += dc; uint32_t n = (uint32_t)(t.acc >> sh); t.acc &= (uint64_t)(d - 1);   // d = 1 << sh (integer, no divisions)
             while (n) {
                 uint32_t to_a = (uint16_t)(t.gra - t.tcnt), to_b = (uint16_t)(t.grb - t.tcnt), to_o = 0x10000 - t.tcnt;
                 uint32_t ev = n;
@@ -228,18 +228,18 @@ public:
         if (changed) compute_irq();
     }
 
-    // vettore dell'interrupt piu' prioritario (numero piu' basso) tra le sorgenti attive
-    uint8_t irq_pins = 0xff;                                    // livello dei pin IRQ0-5 (1 = alto, attivo basso)
+    // vector of the highest-priority interrupt (lowest number) among the active sources
+    uint8_t irq_pins = 0xff;                                    // level of the IRQ0-5 pins (1 = high, active low)
     void set_irq_pin(int n, bool asserted) {
         uint8_t bit = 1 << n; bool was_low = !(irq_pins & bit);
         if (asserted) irq_pins &= ~bit; else irq_pins |= bit;
-        if (asserted && !was_low && (iscr & bit)) isr |= bit;     // fronte di discesa
+        if (asserted && !was_low && (iscr & bit)) isr |= bit;     // falling edge
         compute_irq();
     }
     int pending_vector() {
         for (int n = 0; n < 6; n++) {
             uint8_t bit = 1 << n;
-            if (!(iscr & bit) && !(irq_pins & bit)) isr |= bit;     // sensibile al livello
+            if (!(iscr & bit) && !(irq_pins & bit)) isr |= bit;     // level-sensitive
             if ((isr & bit) && (ier & bit)) return 12 + n;
         }
         for (int c = 0; c < 5; c++) {
@@ -260,7 +260,7 @@ public:
     }
     void compute_irq() { int v = pending_vector(); cpu.m_irq_vector = (v && !(cpu.m_CCR & H8::F_I)) ? v : 0; }
 
-    // ---------------------------------------------------------------- registri on-chip
+    // ---------------------------------------------------------------- on-chip registers
     uint8_t port_read(uint8_t ddr, uint8_t dr, uint8_t in) { return (ddr & dr) | (~ddr & in); }
     uint8_t onchip_r(uint32_t o) {
         if (log_acc) onchip_acc[0xffff00 + o]++;
@@ -270,15 +270,15 @@ public:
             case 0x60: return tstr;
             case 0xb0: return sci[0].smr; case 0xb1: return sci[0].brr; case 0xb2: return sci[0].scr; case 0xb3: return sci[0].tdr; case 0xb4: return sci[0].ssr; case 0xb5: { Sci& s = sci[0]; return s.rdr; }
             case 0xb8: return sci[1].smr; case 0xb9: return sci[1].brr; case 0xba: return sci[1].scr; case 0xbb: return sci[1].tdr; case 0xbc: return sci[1].ssr; case 0xbd: return sci[1].rdr;
-            case 0xc5: case 0xc9: case 0xcd: case 0xd0: case 0xd1: case 0xd4: return 0xff;        // DDR (sola scrittura)
+            case 0xc5: case 0xc9: case 0xcd: case 0xd0: case 0xd1: case 0xd4: return 0xff;        // DDR (write-only)
             case 0xc7: return 0xff;
             case 0xcb: return port_read(reg[0xc9], p6_out, p6_in ? p6_in() : 0xff);
-            case 0xce: return 0;                                                                   // porta 7: costante 0
+            case 0xce: return 0;                                                                   // port 7: constant 0
             case 0xcf: return port_read(reg[0xcd], p8_out, p8_in ? p8_in() : 0xff);
             case 0xd2: return 0xff;
             case 0xd3: return port_read(reg[0xd1], porta_out, 0xff);
             case 0xd6: return port_read(reg[0xd4], portb_out, portb_in);
-            case 0xe0: case 0xe1: case 0xe2: case 0xe3: case 0xe4: case 0xe5: case 0xe6: case 0xe7: return 0;   // ADC: ingressi a 0
+            case 0xe0: case 0xe1: case 0xe2: case 0xe3: case 0xe4: case 0xe5: case 0xe6: case 0xe7: return 0;   // ADC: inputs at 0
             case 0xe8: return adcsr; case 0xe9: return adcr;
             case 0xf2: return syscr; case 0xf4: return iscr; case 0xf5: return ier; case 0xf6: return isr;
             case 0xf8: return icr >> 8; case 0xf9: return icr & 0xff;
@@ -310,20 +310,20 @@ public:
     }
     void sci_ssr_w(int n, uint8_t v) {
         Sci& s = sci[n]; uint8_t old = s.ssr;
-        s.ssr = (old & v & 0xf8) | (old & 0x07);                 // i flag 7..3 si azzerano scrivendo 0
-        if (!(s.scr & 0x20)) s.ssr |= 0x84;                      // con TE=0, TDRE e TEND restano a 1
-        else if ((old & 0x80) && !(v & 0x80)) {                  // TDRE azzerato con TE=1: TDR passa al registro a scorrimento
+        s.ssr = (old & v & 0xf8) | (old & 0x07);                 // flags 7..3 are cleared by writing 0
+        if (!(s.scr & 0x20)) s.ssr |= 0x84;                      // with TE=0, TDRE and TEND stay at 1
+        else if ((old & 0x80) && !(v & 0x80)) {                  // TDRE cleared with TE=1: TDR goes to the shift register
             if (s.tx_left == 0) { s.tx_byte = s.tdr; s.ssr = (s.ssr | 0x80) & ~0x04; s.tx_left = bytetime(n); }
-            else { s.tdr_full = true; s.ssr &= ~0x80; }           // registro a scorrimento occupato: il byte attende in TDR
+            else { s.tdr_full = true; s.ssr &= ~0x80; }           // shift register busy: the byte waits in TDR
         }
-        // sincrona in sola ricezione (RTC): azzerare RDRF fa partire la ricezione del byte successivo (ricezione continua)
+        // synchronous receive-only (RTC): clearing RDRF starts receiving the next byte (continuous receive)
         if ((old & 0x40) && !(v & 0x40) && (s.smr & 0x80) && (s.scr & 0x10) && !(s.scr & 0x20) && s.tx_left == 0) { s.tx_left = bytetime(n); s.ssr &= ~0x04; }
         compute_irq();
     }
-    int64_t bytetime(int n) {                                    // cicli per 10 bit; clock esterno (JVS) = 115200 baud
+    int64_t bytetime(int n) {                                    // cycles per 10 bits; external clock (JVS) = 115200 baud
         const Sci& s = sci[n];
         double baud = 115200.0;
-        if (s.smr & 0x80) { int k = s.smr & 3; return (int64_t)(8.0 * (4.0 * (1 << (2 * k)) * (s.brr + 1))); }   // sincrona: 8 impulsi di clock
+        if (s.smr & 0x80) { int k = s.smr & 3; return (int64_t)(8.0 * (4.0 * (1 << (2 * k)) * (s.brr + 1))); }   // synchronous: 8 clock pulses
         if (!(s.scr & 0x02)) { int k = s.smr & 3; baud = CLOCK / (64.0 * (1 << (2 * k)) * (s.brr + 1)); }
         return (int64_t)(10.0 * CLOCK / baud);
     }
@@ -336,7 +336,7 @@ public:
     void itu_w(int c, int o, uint8_t v) {
         Itu& t = itu[c];
         switch (o) { case 0: t.tcr = v; break; case 1: t.tior = v; break; case 2: t.tier = v | 0xf8; break;
-            case 3: t.tsr = (t.tsr & v) | 0xf8; break;                                              // flag azzerati scrivendo 0
+            case 3: t.tsr = (t.tsr & v) | 0xf8; break;                                              // flags cleared by writing 0
             case 4: t.tcnt = (t.tcnt & 0xff) | (v << 8); break; case 5: t.tcnt = (t.tcnt & 0xff00) | v; break;
             case 6: t.gra = (t.gra & 0xff) | (v << 8); break; case 7: t.gra = (t.gra & 0xff00) | v; break;
             case 8: t.grb = (t.grb & 0xff) | (v << 8); break; case 9: t.grb = (t.grb & 0xff00) | v; break; }

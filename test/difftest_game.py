@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Livello 2: funzioni REALI di Panic Park. Uso: difftest_game.py [n_funzioni] [casi_per_funzione] [seed]"""
+"""Level 2: REAL Panic Park functions. Usage: difftest_game.py [n_functions] [cases_per_function] [seed]"""
 import os, random, struct, subprocess, sys, csv, collections
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.join(HERE, '..')
@@ -15,7 +15,7 @@ ELF = os.environ.get('PANICPRK_ELF', os.path.join(ROOT, '..', 'panicprk_main.elf
 rnd = random.Random(SEED)
 BUILD = os.path.join(HERE, 'build2'); os.makedirs(BUILD, exist_ok=True)
 
-# ------------------------------------------------------------ ELF -> immagine RAM
+# ------------------------------------------------------------ ELF -> RAM image
 from elftools.elf.elffile import ELFFile
 elf = ELFFile(open(ELF, 'rb'))
 IMG_SZ = 0x300000
@@ -43,7 +43,7 @@ _extra, _ = m.discover_fn_pointers(tr, secs, tbase, thi, verbose=True)
 tr.entries = sorted(set(tr.entries) | _extra)
 ents = list(tr.entries)
 
-# ------------------------------------------------------------ purezza
+# ------------------------------------------------------------ purity
 IMPURE_OPS = {'mfc0', 'mtc0', 'eret', 'cache', 'syscall', 'jalr', '?'}
 info = {}
 for s in ents:
@@ -62,7 +62,7 @@ def impure(s, stack=()):
     memo[s] = r; return r
 pure = [s for s in ents if not impure(s) and 6 <= info[s]['n'] <= 700]
 withcalls = [s for s in pure if info[s]['calls']]
-print(f'funzioni pure: {len([s for s in ents if not impure(s)])} / {len(ents)}; candidate {len(pure)} (con chiamate: {len(withcalls)})')
+print(f'pure functions: {len([s for s in ents if not impure(s)])} / {len(ents)}; candidates {len(pure)} (with calls: {len(withcalls)})')
 roots = rnd.sample(withcalls, min(NF // 2, len(withcalls))) + rnd.sample(pure, min(NF // 2, len(pure)))
 roots = sorted(set(roots))
 todo = set(roots); stack = list(roots)
@@ -72,9 +72,9 @@ while stack:
         if t not in todo: todo.add(t); stack.append(t)
 tr.closure(set(todo))
 todo = sorted(todo | {t for t in tr.entries if t in todo})
-print(f'root: {len(roots)}, funzioni da emettere (con chiusura): {len(todo)}')
+print(f'roots: {len(roots)}, functions to emit (with closure): {len(todo)}')
 
-# ------------------------------------------------------------ genera C++ e compila
+# ------------------------------------------------------------ generate C++ and compile
 lines = ['#include "runtime.h"', '#pragma GCC diagnostic ignored "-Wunused-label"']
 for s in todo: lines.append(f'void {m.fname(s)}(CPU* c);')
 for s in todo: lines += tr.emit_function(s)
@@ -85,9 +85,9 @@ exe = os.path.join(BUILD, 'harness2')
 r = subprocess.run(['g++', '-std=c++17', '-O1', '-DRECOMP_TEST', '-ffp-contract=off', '-fno-fast-math', '-w', '-I' + ROOT,
                     os.path.join(HERE, 'harness2.cpp'), os.path.join(BUILD, 'gen.cpp'), '-o', exe], capture_output=True, text=True)
 if r.returncode: print(r.stderr[:3000]); sys.exit(1)
-print('compilato')
+print('compiled')
 
-# ------------------------------------------------------------ casi
+# ------------------------------------------------------------ cases
 END, SP, GP = 0x80F20000, 0x80E00000, 0x80275040
 def rand_ptr(): return 0x800dc700 + 4 * rnd.randrange(0, (0x802aa000 - 0x800dc700) // 4)
 def rand_arg():
@@ -161,9 +161,9 @@ for ci, (cs, cp) in enumerate(zip(cases, cpp)):
     try: uc.emu_start(fn, END, count=400000)
     except UcError as e: err = e
     if err is not None:
-        skipped['unicorn eccezione'] += 1; uc = new_uc(); continue
+        skipped['unicorn exception'] += 1; uc = new_uc(); continue
     if uc.reg_read(UC_MIPS_REG_PC) != END:
-        skipped['unicorn non terminato'] += 1
+        skipped['unicorn did not finish'] += 1
         uc.mem_write(0, bytes(img)); uc.mem_write(STK_LO, ZSTK); continue
     ur = [0] + [uc.reg_read(GPR[n]) for n in range(1, 32)]
     uhi, ulo = uc.reg_read(UC_MIPS_REG_HI), uc.reg_read(UC_MIPS_REG_LO)
@@ -176,7 +176,7 @@ for ci, (cs, cp) in enumerate(zip(cases, cpp)):
         if a < IMG_SZ: return int(IMGA[a])
         if STK_LO <= a < STK_LO + STK_LEN: return 0
         return int(uc.mem_read(a, 1)[0])
-    uc.mem_write(0, bytes(img)); uc.mem_write(STK_LO, ZSTK)       # ripristino completo
+    uc.mem_write(0, bytes(img)); uc.mem_write(STK_LO, ZSTK)       # full restore
     uc.reg_write(GPR[T9], 0x80F10000)
     uc.emu_start(0x80F00800, 0x80F00800 + 4 * 33)
     uf = struct.unpack('>32I', bytes(uc.mem_read(STATE, 128)))
@@ -196,10 +196,10 @@ for ci, (cs, cp) in enumerate(zip(cases, cpp)):
         bad += 1; per_func[fn][1] += 1
         if shown < 6:
             shown += 1
-            print(f'--- DIFF in f_{fn:08x} (caso {ci})'); [print('     ', d) for d in diffs[:6]]
+            print(f'--- DIFF in f_{fn:08x} (case {ci})'); [print('     ', d) for d in diffs[:6]]
     else:
         ok += 1; per_func[fn][0] += 1
 
 nfun = sum(1 for v in per_func.values() if v[0] + v[1])
-print(f'\nRISULTATO: {ok} casi identici, {bad} diversi, {sum(skipped.values())} saltati {dict(skipped)}')
-print(f'funzioni con almeno un confronto valido: {nfun}/{len(roots)}; con differenze: {sum(1 for v in per_func.values() if v[1])}')
+print(f'\nRESULT: {ok} identical cases, {bad} different, {sum(skipped.values())} skipped {dict(skipped)}')
+print(f'functions with at least one valid comparison: {nfun}/{len(roots)}; with differences: {sum(1 for v in per_func.values() if v[1])}')

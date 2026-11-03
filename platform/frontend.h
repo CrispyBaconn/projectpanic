@@ -1,5 +1,5 @@
-// Frontend SDL2 di Panic Park ricompilato: mappatura ingressi (tastiera + controller), configurazione salvata su file
-// e schermata di impostazioni prima dell'avvio. Gli ingressi finiscono nella scheda I/O ASCA emulata (AscaInputs).
+// SDL2 frontend for recompiled Panic Park: input mapping (keyboard + controller), configuration saved to a file
+// and settings screen before startup. The inputs go to the emulated ASCA I/O board (AscaInputs).
 #pragma once
 #ifdef USE_SDL
 #include <SDL.h>
@@ -14,37 +14,37 @@
 #include "i18n.h"
 #include "../h8/ascasys.h"
 
-// ---------------------------------------------------------------- aggiornamento dello schermo (il gioco gira sempre a 59,9 Hz)
-static const double FPS_LIST[] = {0, 59.9, 60, 75, 100, 120, 144, 165, 240, -1, 30};   // 0 = VSync, -1 = senza limite, 30 = meta' (console lente)
+// ---------------------------------------------------------------- screen refresh (the game always runs at 59.9 Hz)
+static const double FPS_LIST[] = {0, 59.9, 60, 75, 100, 120, 144, 165, 240, -1, 30};   // 0 = VSync, -1 = unlimited, 30 = half (slow consoles)
 static const int FPS_N = (int)(sizeof FPS_LIST / sizeof FPS_LIST[0]);
 
-// ---------------------------------------------------------------- azioni
+// ---------------------------------------------------------------- actions
 enum Act { A_LEFT, A_RIGHT, A_COIN, A_START1, A_START2, A_UP, A_DOWN, A_ENTER, A_TEST, A_SERVICE, A_COUNT };
 struct ActInfo { const char* id; const char* name; };
 static const ActInfo ACT_INFO[A_COUNT] = {
-    {"left", "Muovi a sinistra"}, {"right", "Muovi a destra"}, {"coin", "Moneta (credito)"}, {"start1", "Start giocatore 1"},
-    {"start2", "Start giocatore 2"}, {"up", "Su (selezione)"}, {"down", "Giu' (selezione)"}, {"enter", "Invio / pulsante 1"},
-    {"test", "Test (cabinato)"}, {"service", "DIP configurazione on/off"},
+    {"left", "Move left"}, {"right", "Move right"}, {"coin", "Coin (credit)"}, {"start1", "Player 1 start"},
+    {"start2", "Player 2 start"}, {"up", "Up (select)"}, {"down", "Down (select)"}, {"enter", "Enter / button 1"},
+    {"test", "Test (cabinet)"}, {"service", "Config DIP on/off"},
 };
 
 struct Config {
-    int key[A_COUNT][2];                       // scancode SDL (0 = nessuno), due tasti per azione
-    int pad[A_COUNT];                          // SDL_GameControllerButton (-1 = nessuno)
-    int deadzone = 12;                         // % della corsa dello stick
-    int sens = 100;                            // % di escursione dell'asse analogico
-    int invert = 0;                            // inverte l'asse
-    int axis = 0;                              // 0 = stick sinistro X, 1 = stick destro X
+    int key[A_COUNT][2];                       // SDL scancode (0 = none), two keys per action
+    int pad[A_COUNT];                          // SDL_GameControllerButton (-1 = none)
+    int deadzone = 12;                         // % of stick travel
+    int sens = 100;                            // % of analog axis travel
+    int invert = 0;                            // inverts the axis
+    int axis = 0;                              // 0 = left stick X, 1 = right stick X
     int fullscreen = 0;
-    std::string ui_lang = "it";                // file in lang/ (senza .json)
-    int game_lang = -1;                        // -1 = non toccare; 0..7 = JPN ENG GER FRA SPA POR ITA KOR
-    int fps = 0;                               // aggiornamento schermo: 0 = VSync del monitor, poi FPS_LIST (il gioco resta a 59,9 Hz)
-    int wide = 0;                              // 1 = 16:9 sperimentale (si vede di piu' ai lati, il testo resta 4:3)
-    int res3d = 1;                             // 0 = 3D a 640x480, 1 = alla risoluzione della finestra (4:3), 2 = 320x240 (veloce)
-    int touch = 1;                             // tocco: 1 = trackpad (il dito sposta la leva, che resta dov'e'), 0 = joystick (torna al centro)
-    int touchui = 1;                           // pulsanti a schermo (moneta, servizio, menu) sui touchscreen: 1 si', 0 no
-    int gpu = 1;                               // 1 = 3D disegnato dalla scheda video (OpenGL), 0 = dalla CPU
-    int skip_post = 0;                         // DIP 7 (salta il POST)
-    int service_dip = 0;                       // DIP di servizio acceso all'avvio
+    std::string ui_lang = "en";                // files in lang/ (without .json)
+    int game_lang = -1;                        // -1 = leave unchanged; 0..7 = JPN ENG GER FRA SPA POR ITA KOR
+    int fps = 0;                               // screen refresh: 0 = monitor VSync, then FPS_LIST (the game stays at 59.9 Hz)
+    int wide = 0;                              // 1 = experimental 16:9 (more is visible at the sides, text stays 4:3)
+    int res3d = 1;                             // 0 = 3D at 640x480, 1 = at window resolution (4:3), 2 = 320x240 (fast)
+    int touch = 1;                             // touch: 1 = trackpad (the finger moves the lever, which stays where it is), 0 = joystick (returns to centre)
+    int touchui = 1;                           // on-screen buttons (coin, service, menu) on touchscreens: 1 yes, 0 no
+    int gpu = 1;                               // 1 = 3D drawn by the graphics card (OpenGL), 0 = by the CPU
+    int skip_post = 0;                         // DIP 7 (skip POST)
+    int service_dip = 0;                       // Service DIP on at startup
     Config() { defaults(); }
     void defaults() {
         memset(key, 0, sizeof key); for (int i = 0; i < A_COUNT; i++) pad[i] = -1;
@@ -61,11 +61,11 @@ struct Config {
         deadzone = 12; sens = 100; invert = 0; axis = 0; fullscreen = 0; res3d = 1; wide = 0; game_lang = -1; fps = 0; skip_post = 0; service_dip = 0; gpu = 1; touchui = 1;
 #if defined(__WIIU__) || defined(__SWITCH__) || defined(__ANDROID__)
 #if !defined(__SWITCH__)
-        gpu = 0;                                                 // GPU non ancora provata su Wii U (niente OpenGL) e telefoni
+        gpu = 0;                                                 // GPU not yet tested on Wii U (no OpenGL) and phones
 #endif
-        fullscreen = 1; res3d = 2; skip_post = 1;               // console: 3D a 320x240 (CPU lenta), schermo sempre intero
+        fullscreen = 1; res3d = 2; skip_post = 1;               // consoles: 3D at 320x240 (slow CPU), always full screen
 #ifdef __ANDROID__
-        res3d = 0;                                              // i telefoni reggono il 3D a 640x480
+        res3d = 0;                                              // phones can handle the 3D at 640x480
 #endif
 #endif
     }
@@ -80,8 +80,8 @@ struct Config {
 #endif
     }
     void save() const {
-        FILE* f = fopen(path().c_str(), "w"); if (!f) { fprintf(stderr, "impossibile salvare %s\n", path().c_str()); return; }
-        fprintf(f, "# Panic Park ricompilato - impostazioni (modificabili a mano o dalla schermata iniziale)\n");
+        FILE* f = fopen(path().c_str(), "w"); if (!f) { fprintf(stderr, "cannot save %s\n", path().c_str()); return; }
+        fprintf(f, "# Panic Park recompiled - settings (editable by hand or from the start screen)\n");
         for (int i = 0; i < A_COUNT; i++) fprintf(f, "%s_key1=%d\n%s_key2=%d\n%s_pad=%d\n", ACT_INFO[i].id, key[i][0], ACT_INFO[i].id, key[i][1], ACT_INFO[i].id, pad[i]);
         fprintf(f, "deadzone=%d\nsens=%d\ninvert=%d\naxis=%d\nfullscreen=%d\nres3d=%d\nwide=%d\nfps=%d\ntouch=%d\ntouchui=%d\ngpu=%d\ngame_lang=%d\nui_lang=%s\nskip_post=%d\nservice_dip=%d\n", deadzone, sens, invert, axis, fullscreen, res3d, wide, fps, touch, touchui, gpu, game_lang, ui_lang.c_str(), skip_post, service_dip);
         fclose(f);
@@ -111,28 +111,28 @@ struct Pads {
         for (int i = 0; i < SDL_NumJoysticks(); i++) if (SDL_IsGameController(i)) if (SDL_GameController* c = SDL_GameControllerOpen(i)) list.push_back(c);
     }
     bool button(int b) const { if (b < 0) return false; for (auto c : list) if (SDL_GameControllerGetButton(c, (SDL_GameControllerButton)b)) return true; return false; }
-    float axis(SDL_GameControllerAxis a) const {            // somma tra i controller, in [-1, 1]
+    float axis(SDL_GameControllerAxis a) const {            // sum over the controllers, in [-1, 1]
         float v = 0; for (auto c : list) { float x = SDL_GameControllerGetAxis(c, a) / 32767.0f; if (fabsf(x) > fabsf(v)) v = x; } return v;
     }
     std::string name() const { return list.empty() ? "" : SDL_GameControllerName(list[0]); }
 };
 
-// ---------------------------------------------------------------- stato ingressi -> scheda ASCA
+// ---------------------------------------------------------------- input state -> ASCA board
 struct InputState {
     Config cfg; Pads pads;
     bool test_on = false, service_dip = false;
     uint64_t coin_until = 0;
     bool prev_service = false, prev_test = false;
-    // ---- tocco (Android, ma funziona con qualsiasi touchscreen): trascinare il dito a destra/sinistra muove il
-    // giocatore 1 come lo stick (rispetto al punto in cui si e' appoggiato il dito); un tocco breve = Start + Invio;
-    // l'angolo in alto a sinistra = moneta. Coordinate normalizzate 0..1 dello schermo.
+    // ---- touch (Android, but works with any touchscreen): dragging the finger right/left moves the
+    // player 1 like the stick (relative to where the finger was placed); a short tap = Start + Enter;
+    // the top-left corner = coin. Normalised 0..1 screen coordinates.
     SDL_FingerID t_id = -1; bool t_on = false, t_used = false; float t_pos = 0; float t_xs = 0, t_x0 = 0, t_y0 = 0, t_axis = 0, t_maxd = 0; uint64_t t_down = 0, t_btn_until = 0, t_coin_until = 0, t_svc_until = 0;
-    static constexpr float T_RANGE = 0.18f;                    // spostamento (frazione della larghezza) per lo sterzo pieno
+    static constexpr float T_RANGE = 0.18f;                    // offset (fraction of the width) for full steering
     static bool coin_zone(float x, float y) { return x < 0.16f && y < 0.22f; }
-    static bool svc_zone(float x, float y) { return x > 0.84f && y < 0.22f; }      // angolo in alto a destra = DIP di servizio
-    static bool menu_zone(float x, float y) { return x > 0.42f && x < 0.58f && y < 0.10f; }   // in alto al centro = menu delle impostazioni
-    bool t_menu_req = false;                                   // tocco su MENU: la finestra apre le impostazioni
-    // pulsanti a schermo del menu di servizio/test (compaiono solo li'): SU, GIU', INVIO, tenuti finche' il dito resta giu'
+    static bool svc_zone(float x, float y) { return x > 0.84f && y < 0.22f; }      // top-right corner = service DIP
+    static bool menu_zone(float x, float y) { return x > 0.42f && x < 0.58f && y < 0.10f; }   // top centre = settings menu
+    bool t_menu_req = false;                                   // tap on MENU: the window opens the settings
+    // on-screen buttons for the service/test menu (they appear only there): UP, DOWN, ENTER, held while the finger stays down
     struct TBtn { float x0, y0, x1, y1; uint32_t bit; const char* key; };
     static const TBtn* menu_btns(int& n) {
         static const TBtn B[3] = { {0.84f, 0.26f, 0.98f, 0.45f, 0x20, "touch_up"}, {0.84f, 0.47f, 0.98f, 0.66f, 0x10, "touch_down"}, {0.84f, 0.70f, 0.98f, 0.89f, 0x02, "touch_ok"} };
@@ -143,7 +143,7 @@ struct InputState {
     uint32_t menu_held() const { uint32_t m = 0; for (int i = 0; i < 4; i++) if (mb_id[i] != -1) m |= mb_bit[i]; return m; }
     void touch(const SDL_Event& e, uint64_t now_ms) {
         if (e.type == SDL_FINGERDOWN) {
-            if (cfg.touchui) {                                  // pulsanti a schermo (disattivabili nelle impostazioni)
+            if (cfg.touchui) {                                  // on-screen buttons (can be disabled in the settings)
                 if (coin_zone(e.tfinger.x, e.tfinger.y)) { t_coin_until = now_ms + 120; return; }
                 if (svc_zone(e.tfinger.x, e.tfinger.y)) { t_svc_until = now_ms + 100; return; }
                 if (menu_zone(e.tfinger.x, e.tfinger.y)) { t_menu_req = true; return; }
@@ -152,30 +152,30 @@ struct InputState {
                 for (int k = 0; k < n; k++) if (e.tfinger.x >= B[k].x0 && e.tfinger.x < B[k].x1 && e.tfinger.y >= B[k].y0 && e.tfinger.y < B[k].y1) {
                     for (int i = 0; i < 4; i++) if (mb_id[i] == -1) { mb_id[i] = e.tfinger.fingerId; mb_bit[i] = B[k].bit; break; }
                     return; } }
-            if (t_on) return;                                   // solo il primo dito guida
+            if (t_on) return;                                   // only the first finger steers
             t_on = true; t_id = e.tfinger.fingerId; t_xs = t_x0 = e.tfinger.x; t_y0 = e.tfinger.y; t_axis = 0; t_maxd = 0; t_down = now_ms;
         } else if (e.type == SDL_FINGERMOTION && t_on && e.tfinger.fingerId == t_id) {
             t_maxd = std::max(t_maxd, std::max(std::fabs(e.tfinger.x - t_xs), std::fabs(e.tfinger.y - t_y0)));
-            if (cfg.touch) {                                    // trackpad: lo spostamento del dito sposta la leva (con accelerazione,
-                const float dx = e.tfinger.dx;                  // come il puntatore di un portatile); sollevando il dito resta li'
+            if (cfg.touch) {                                    // trackpad: moving the finger moves the lever (with acceleration,
+                const float dx = e.tfinger.dx;                  // like a laptop touchpad); lifting the finger leaves it there
                 const float acc = 1.f + std::min(2.f, std::fabs(dx) * 40.f);
                 t_pos = std::max(-1.f, std::min(1.f, t_pos + dx * 4.f * acc));
                 t_used = true; return;
             }
             float d = e.tfinger.x - t_x0;
-            if (d > T_RANGE) { t_x0 = e.tfinger.x - T_RANGE; d = T_RANGE; }          // oltre il fondo corsa il punto di partenza segue il dito:
-            if (d < -T_RANGE) { t_x0 = e.tfinger.x + T_RANGE; d = -T_RANGE; }        // tornando indietro lo sterzo risponde subito
+            if (d > T_RANGE) { t_x0 = e.tfinger.x - T_RANGE; d = T_RANGE; }          // past the end of travel the starting point follows the finger:
+            if (d < -T_RANGE) { t_x0 = e.tfinger.x + T_RANGE; d = -T_RANGE; }        // when going back the steering responds immediately
             t_axis = d / T_RANGE;
         } else if (e.type == SDL_FINGERUP && [&] { for (int i = 0; i < 4; i++) if (mb_id[i] == e.tfinger.fingerId) { mb_id[i] = -1; return true; } return false; }()) {
-            // rilasciato un pulsante del menu
+            // a menu button was released
         } else if (e.type == SDL_FINGERUP && t_on && e.tfinger.fingerId == t_id) {
-            if (now_ms - t_down < 250 && t_maxd < 0.03f) t_btn_until = now_ms + 150;  // tocco breve: Start + Invio
+            if (now_ms - t_down < 250 && t_maxd < 0.03f) t_btn_until = now_ms + 150;  // short tap: Start + Enter
             t_on = false; t_axis = 0;
         }
     }
     bool key_down(const Uint8* ks, int a) const { return (cfg.key[a][0] && ks[cfg.key[a][0]]) || (cfg.key[a][1] && ks[cfg.key[a][1]]); }
     bool down(const Uint8* ks, int a) const { return key_down(ks, a) || pads.button(cfg.pad[a]); }
-    // aggiorna AscaInputs; restituisce true se il DIP di servizio e' cambiato (l'host aggiorna g_dsw)
+    // updates AscaInputs; returns true if the service DIP changed (the host updates g_dsw)
     bool update(AscaInputs& in, uint64_t now_ms) {
         const Uint8* ks = SDL_GetKeyboardState(nullptr);
         uint32_t p1 = 0;
@@ -184,10 +184,10 @@ struct InputState {
         if (down(ks, A_ENTER)) p1 |= 0x02;
         if (down(ks, A_START1)) p1 |= 0x01;
         if (down(ks, A_START2)) p1 |= 0x8000;
-        if (now_ms < t_btn_until) p1 |= 0x03;                                         // tocco breve
-        if (menu_mode()) p1 |= menu_held(); else for (auto& id : mb_id) id = -1;        // pulsanti a schermo del menu
+        if (now_ms < t_btn_until) p1 |= 0x03;                                         // short tap
+        if (menu_mode()) p1 |= menu_held(); else for (auto& id : mb_id) id = -1;        // menu on-screen buttons
         in.p1 = p1;
-        if (down(ks, A_COIN)) coin_until = now_ms + 80;                                // la moneta resta attiva almeno 80 ms (il firmware campiona ogni ~16 ms)
+        if (down(ks, A_COIN)) coin_until = now_ms + 80;                                // the coin stays active for at least 80 ms (the firmware samples every ~16 ms)
         if (now_ms < t_coin_until) coin_until = std::max(coin_until, t_coin_until);
         in.coin1 = now_ms < coin_until ? 1 : 0;
         bool tst = down(ks, A_TEST); if (tst && !prev_test) test_on = !test_on; prev_test = tst;
@@ -195,8 +195,8 @@ struct InputState {
         float v = pads.axis(cfg.axis ? SDL_CONTROLLER_AXIS_RIGHTX : SDL_CONTROLLER_AXIS_LEFTX);
         float dz = cfg.deadzone / 100.0f;
         v = fabsf(v) < dz ? 0 : (v > 0 ? (v - dz) : (v + dz)) / (1 - dz);
-        if (cfg.touch) { if (t_used && std::fabs(v) < 0.05f) v = t_pos; }               // dito sullo schermo: trackpad
-        else if (t_on && t_axis != 0) v = t_axis;                                     // dito sullo schermo: joystick
+        if (cfg.touch) { if (t_used && std::fabs(v) < 0.05f) v = t_pos; }               // finger on the screen: trackpad
+        else if (t_on && t_axis != 0) v = t_axis;                                     // finger on the screen: joystick
         if (down(ks, A_LEFT)) v = -1; if (down(ks, A_RIGHT)) v = 1;
         if (cfg.invert) v = -v;
         float x = 0x8000 + v * 0x7fff * (cfg.sens / 100.0f);
@@ -207,7 +207,7 @@ struct InputState {
     }
 };
 
-// ---------------------------------------------------------------- testo (atlante font)
+// ---------------------------------------------------------------- text (font atlas)
 struct Text {
     SDL_Renderer* ren = nullptr; SDL_Texture* atlas = nullptr;
     void init(SDL_Renderer* r) {
@@ -235,6 +235,6 @@ static std::string key_name(int sc) { if (!sc) return "-"; const char* n = SDL_G
 static std::string pad_name(int b) { if (b < 0) return "-"; const char* n = SDL_GameControllerGetStringForButton((SDL_GameControllerButton)b); return n ? n : "?"; }
 
 static void (*g_launcher_shot)(SDL_Renderer*) = nullptr;
-static void (*g_menu_shot)(SDL_Renderer*) = nullptr;           // test: menu in gioco (salva e riprende)       // test non interattivo: salva la schermata
+static void (*g_menu_shot)(SDL_Renderer*) = nullptr;           // test: in-game menu (save and resume)       // non-interactive test: saves the screen
 #include "launcher.h"
 #endif

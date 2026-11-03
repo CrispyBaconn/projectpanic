@@ -1,5 +1,5 @@
-// Sonda della scheda I/O ASCA-3: manda pacchetti JVS al firmware originale emulato (asca-3a.ic14) e stampa le risposte.
-// Serve a ricavare (e poi verificare) la risposta nativa di platform/jvs_hle.h.
+// ASCA-3 I/O board probe: sends JVS packets to the original emulated firmware (asca-3a.ic14) and prints the replies.
+// Used to derive (and then verify) the native reply of platform/jvs_hle.h.
 //   g++ -std=c++17 -O1 -I. test/jvs_probe.cpp -o /tmp/jvs_probe && /tmp/jvs_probe panicprkrom/asca-3a.ic14 [hle]
 #include <cstdint>
 #include <cstring>
@@ -23,7 +23,7 @@ static std::vector<uint8_t> unesc(const std::vector<uint8_t>& v) {
 
 struct Board {
     virtual ~Board() {}
-    virtual std::vector<uint8_t> xfer(const std::vector<uint8_t>& p) = 0;     // pacchetto -> risposta grezza (con E0)
+    virtual std::vector<uint8_t> xfer(const std::vector<uint8_t>& p) = 0;     // packet -> raw reply (with E0)
     virtual int sense() = 0;
 };
 struct Real : Board {
@@ -49,7 +49,7 @@ int main(int argc, char** argv) {
     Board* B = hle ? (Board*)new Hle(&in) : (Board*)new Real(argv[1], &in);
     auto X = [&](const char* tag, std::vector<uint8_t> data, uint8_t node = 1) { auto r = B->xfer(pkt(node, data)); printf("%-10s %s| sense=%d\n", tag, hex(r.empty() ? r : unesc(r)).c_str(), B->sense()); };
     const std::vector<uint8_t> poll = {0x20, 0x01, 0x03, 0x21, 0x02, 0x22, 0x08, 0x23, 0x02, 0x32, 0x02, 0x00, 0x00, 0x33, 0x01, 0x00, 0x00};
-    printf("sense iniziale=%d\n", B->sense());
+    printf("initial sense=%d\n", B->sense());
     X("reset", {0xf0, 0xd9}, 0xff); X("reset", {0xf0, 0xd9}, 0xff);
     X("addr", {0xf1, 0x01}, 0xff);
     X("rev", {0x11, 0x12, 0x13, 0x14}); X("id", {0x10}); X("70 04/02", {0x70, 0x04, 0x70, 0x02}); X("70 18", {0x70, 0x18, 0x50, 0x4c, 0x01, 0x04});

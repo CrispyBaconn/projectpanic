@@ -1,73 +1,73 @@
-# Panic Park ricompilato – Nintendo Switch (homebrew)
+# Recompiled Panic Park – Nintendo Switch (homebrew)
 
-Versione `.nro` per Switch con CFW (Atmosphère + Homebrew Menu). È lo stesso codice della versione PC
-(codice MIPS ricompilato, H8/3002 emulato, scheda I/O ASCA nativa, 3D software, audio C352); la Switch è little endian come il PC,
-quindi gli asset estratti dalla versione PC vanno bene così come sono.
+`.nro` version for a Switch with CFW (Atmosphère + Homebrew Menu). It is the same code as the PC version
+(recompiled MIPS code, emulated H8/3002, native ASCA I/O board, 3D, C352 audio); the Switch is little endian like the PC,
+so the assets extracted by the PC version work as they are.
 
-## Compilare (in WSL)
+## Building (in WSL)
 
-Serve devkitPro (lo hai già per il 3DS) con i pacchetti per Switch:
+You need devkitPro with the Switch packages:
 
 ```sh
 sudo dkp-pacman -S switch-dev switch-sdl2
-cd /mnt/c/Users/mirko/Downloads/panicprk_recomp/recomp
+cd /path/to/recomp
 sh platform/build_switch.sh
 ```
 
-Il risultato è `panicprk.nro`; lo script prepara anche `dist/switch/sd/switch/panicprk/` con tutto quello che va
-sulla SD (compresi gli asset già estratti da `dist/windows/assets`, se ci sono).
+The result is `panicprk.nro`; the script also prepares `dist/switch/sd/switch/panicprk/` with everything that goes
+on the SD card (including the assets already extracted into `dist/windows/assets`, if present).
 
-## Sulla SD
+## On the SD card
 
 ```
 sd:/switch/panicprk/
     panicprk.nro
     panicprk_main.elf
     main_r4650_BE_4MB.bin
-    panicprkrom/            tutte le ROM di panicprk (anche pnp1wavel.2c / pnp1waveh.2a per l'audio)
-    lang/                   it.json, en.json
-    assets/                 (facoltativo) gli stessi file .bin della versione PC
+    panicprkrom/            all the panicprk ROMs (including pnp1wavel.2c / pnp1waveh.2a for audio)
+    lang/                   en.json, it.json
+    assets/                 (optional) the same .bin files as the PC version
 ```
 
-Senza `assets/` vengono creati al primo avvio (≈85 MB, lento). Vengono creati anche `nvram.bin`, `panicprk.ini`, `log.txt`.
+Without `assets/` they are created on the first launch (≈85 MB, slow). `nvram.bin`, `panicprk.ini` and `log.txt` are created too.
 
-**Avvialo in modalità "title takeover"** (tieni premuto R mentre apri un gioco qualsiasi): dall'album l'homebrew ha
-poca memoria e meno CPU.
+**Start it in "title takeover" mode** (hold R while opening any game): from the album, homebrew gets
+little memory and less CPU.
 
-## Comandi (Joy-Con / Pro Controller)
+## Controls (Joy-Con / Pro Controller)
 
-| Tasto | Funzione |
+| Button | Function |
 |---|---|
-| Croce / stick sinistro | movimento |
-| A | moneta |
-| + | Start giocatore 1 |
-| Y | Start giocatore 2 |
-| B | Invio / pulsante 1 |
+| D-pad / left stick | movement |
+| A | coin |
+| + | Player 1 start |
+| Y | Player 2 start |
+| B | Enter / button 1 |
 | L | Test |
-| R | DIP di configurazione (calibrazione) |
-| − e + insieme | esci |
+| R | Config DIP (calibration) |
+| − and + together | exit |
 
-Tutto si rimappa dalla schermata iniziale, come su PC. (I nomi A/B seguono la mappatura di SDL: se risultano scambiati,
-rimappali dalla schermata iniziale.)
+Everything can be remapped from the start screen, like on PC. (The A/B names follow SDL's mapping: if they look swapped,
+remap them from the start screen.)
 
-## Differenze rispetto al PC
+## Differences from the PC
 
-- Il 3D parte a 640×480 (l'opzione "come lo schermo" c'è, ma costa CPU); schermo sempre intero, 1280×720.
-- Niente segnali/timer POSIX: il tick a 1 kHz e il VBlank a 59,9 Hz vengono controllati dal codice ricompilato
-  (stesso meccanismo della Wii U, provato su Linux con `-DS23_POLL_TICK`).
-- L'ora per l'RTC del gioco viene dal servizio time della Switch (fuso orario compreso).
-- Il POST è saltato di default.
+- The 3D starts at 640×480 (the "like the screen" option is there, but it costs CPU); always full screen, 1280×720.
+- No POSIX signals/timers: the 1 kHz tick and the 59.9 Hz VBlank are checked by the recompiled code
+  (same mechanism as on the Wii U, tested on Linux with `-DS23_POLL_TICK`).
+- The time for the game's RTC comes from the Switch time service (time zone included).
+- The POST is skipped by default.
 
-## Stato
+## Status
 
-- Verificato: il codice compila per AArch64 (controllo di sintassi con le intestazioni standard) e il meccanismo di
-  tick senza segnali funziona su Linux.
-- **Non verificato**: la compilazione con libnx e l'esecuzione su una Switch vera. Se qualcosa non va, `log.txt`
-  nella cartella dell'app dice fin dove è arrivato; la riga `H8: …% del tempo reale` indica se la sub-CPU tiene il passo.
+- Verified: the code compiles for AArch64 (syntax check with the standard headers) and the signal-free
+  tick mechanism works on Linux.
+- **Not verified**: building with libnx and running on a real Switch. If something goes wrong, `log.txt`
+  in the app folder says how far it got; the line `H8: …% of real time` tells whether the sub-CPU keeps up.
 
-## 3D su GPU
-Il 3D lo disegna la GPU della Switch (OpenGL ES 3): la CPU prepara solo i poligoni, cosi' resta tempo per il gioco e
-l'H8. E' la scelta predefinita ("Disegno del 3D: scheda video" nella schermata iniziale, `gpu=1` in `panicprk.ini`).
-Verificato su PC con lo stesso percorso OpenGL ES (stesso risultato del disegno CPU, 0,3% di pixel diversi ai bordi).
-Se non parte, il gioco torna da solo al disegno della CPU e `log.txt` dice perche'.
-Se in `panicprk.ini` c'e' gia' `gpu=0` (salvato da una versione precedente) va cambiato nella schermata iniziale.
+## 3D on the GPU
+The Switch GPU draws the 3D (OpenGL ES 3): the CPU only prepares the polygons, which leaves time for the game and
+the H8. It is the default choice ("3D drawing: graphics card" in the start screen, `gpu=1` in `panicprk.ini`).
+Verified on PC with the same OpenGL ES path (same result as the CPU renderer, 0.3% of the pixels differ at the edges).
+If it doesn't start, the game falls back to CPU drawing by itself and `log.txt` says why.
+If `panicprk.ini` already contains `gpu=0` (saved by an earlier version) it has to be changed in the start screen.

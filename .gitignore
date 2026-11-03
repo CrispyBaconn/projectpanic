@@ -1,4 +1,4 @@
-# Mai nel repository: ROM, programma estratto, codice generato e file compilati
+# Never in the repository: ROMs, extracted program, generated code and build outputs
 *.bin
 *.elf
 *.ic*

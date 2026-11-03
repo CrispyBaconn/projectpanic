@@ -1,18 +1,18 @@
-// Disegno del 3D per GPU a funzioni fisse (PICA200 del Nintendo 3DS): niente shader per i pixel, quindi la
-// texture a 8 bit con palette del System 23 non si puo' leggere direttamente come su PC/Switch (gl3d.h).
-// Si fa cosi':
-//  * lo spazio delle texture (4096 x N texel, a tile 16x16 rimappate, palette per poligono) viene diviso in celle
-//    da CELL x CELL texel; per ogni cella usata da un poligono, con la sua palette, si prepara (una volta) una texture
-//    RGBA in una cache di "slot" sulla GPU;
-//  * ogni poligono viene ritagliato sulla CPU contro le celle (in spazio lineare dell'occhio, quindi la prospettiva
-//    resta esatta), contro la finestra della viewport (anche quella a trapezio) e contro lo schermo;
-//  * luce, dissolvenza per poligono e trasparenza diventano colore dei vertici e due stadi del combinatore:
-//      stadio 0: rgb = texture * colore_vertice * 4 (luce 0..255/64 e dissolvenza del poligono nel colore)
-//                a   = interpolate(vertice.a, costante.a, texture.a)   (texel "alpha pen" -> alpha del poligono)
-//      stadio 1: rgb = interpolate(precedente, costante.rgb, costante.a) (dissolvenza verso un colore)
-//    poligoni consecutivi con lo stesso stato finiscono in un'unica chiamata di disegno.
-// Questo file non dipende dalla piattaforma: il backend (citro3d sul 3DS, OpenGL a funzioni fisse per il banco di
-// prova su PC) carica gli slot ed esegue i lotti.
+// 3D drawing for a fixed-function GPU (Nintendo 3DS PICA200): no pixel shaders, so the
+// System 23 8-bit palettised textures can't be read directly like on PC/Switch (gl3d.h).
+// It works like this:
+//  * the texture space (4096 x N texels, remapped 16x16 tiles, per-polygon palette) is split into cells
+//    of CELL x CELL texels; for each cell used by a polygon, with its palette, a texture is prepared (once)
+//    RGBA in a cache of "slots" on the GPU;
+//  * each polygon is clipped on the CPU against the cells (in linear eye space, so perspective
+//    stays exact), against the viewport window (the trapezoid one too) and against the screen;
+//  * lighting, per-polygon fade and transparency become vertex colour and two combiner stages:
+//      stage 0: rgb = texture * vertex_colour * 4 (light 0..255/64 and polygon fade in the colour)
+//                a   = interpolate(vertex.a, constant.a, texture.a)   (texel "alpha pen" -> polygon alpha)
+//      stage 1: rgb = interpolate(previous, constant.rgb, constant.a) (fade towards a colour)
+//    consecutive polygons with the same state end up in a single draw call.
+// This file is platform-independent: the backend (citro3d on 3DS, fixed-function OpenGL for the
+// PC test) loads the slots and runs the batches.
 #pragma once
 #include <cstdint>
 #include <cstring>
@@ -24,39 +24,39 @@
 namespace pica {
 using g3d::u8; using g3d::u32;
 
-static const int CELL = 128;                       // lato di una cella / slot (texel)
+static const int CELL = 128;                       // side of a cell / slot (texels)
 
-struct V { float x, y, z, w; float s, t; uint8_t r, g, b, a; };      // x,y,z gia' moltiplicati per w (pixel)
+struct V { float x, y, z, w; float s, t; uint8_t r, g, b, a; };      // x,y,z already multiplied by w (pixels)
 
 struct Batch {
-    int slot = -1;              // texture della GPU che contiene lo slot (Backend::tex_of); -1 = nessuna
-    int first = 0, count = 0;   // vertici (triangoli)
-    uint8_t ca = 255;           // alpha costante (stadio 0)
-    uint8_t mode = 0;           // 0 opaco, 1 alpha, 2 media 50/50 con lo sfondo
-    uint8_t sten = 0;           // 1: texel ritagliati dalla C412 (alpha 0 = scartato)
-    uint32_t fade = 0xff000000u;// stadio 1: rgb = colore, alpha = peso del precedente (255 = nessuna dissolvenza)
+    int slot = -1;              // GPU texture containing the slot (Backend::tex_of); -1 = none
+    int first = 0, count = 0;   // vertices (triangles)
+    uint8_t ca = 255;           // constant alpha (stage 0)
+    uint8_t mode = 0;           // 0 opaque, 1 alpha, 2 50/50 average with the background
+    uint8_t sten = 0;           // 1: texels cut out by the C412 (alpha 0 = discarded)
+    uint32_t fade = 0xff000000u;// stage 1: rgb = colour, alpha = weight of the previous (255 = no fade)
     bool same(const Batch& o) const { return slot == o.slot && ca == o.ca && mode == o.mode && sten == o.sten && fade == o.fade; }
 };
 
 struct Key {
-    int32_t cu, cv; uint32_t pens, tbase; uint8_t cmode, apen, sten, lvl;     // lvl: la cella copre CELL<<lvl texel, uno ogni 1<<lvl
+    int32_t cu, cv; uint32_t pens, tbase; uint8_t cmode, apen, sten, lvl;     // lvl: the cell covers CELL<<lvl texels, one every 1<<lvl
     bool operator==(const Key& o) const { return cu == o.cu && cv == o.cv && pens == o.pens && tbase == o.tbase && cmode == o.cmode && apen == o.apen && sten == o.sten && lvl == o.lvl; }
 };
 struct KeyHash { size_t operator()(const Key& k) const {
     uint64_t h = 1469598103934665603ull; auto mix = [&](uint64_t v) { h = (h ^ v) * 1099511628211ull; };
     mix((uint32_t)k.cu); mix((uint32_t)k.cv); mix(k.pens); mix(k.tbase); mix(k.cmode | (k.apen << 8) | (k.sten << 16) | ((uint32_t)k.lvl << 24)); return (size_t)h; } };
 
-// backend: carica il contenuto di uno slot (CELL x CELL, RGBA 8 bit per canale in un uint32 0xRRGGBBAA, riga 0 =
-// texel v piu' basso) e del livello del testo (tw x th, stesso formato)
-// Gli slot possono stare in poche texture grandi (atlanti): cosi' poligoni vicini nell'ordine di disegno che usano
-// slot diversi dello stesso atlante finiscono nella stessa chiamata di disegno.
-struct SlotMap { float s0, ds, t0, dt; };          // coordinate finali = (s0 + ls * ds, t0 + lt * dt), ls/lt in [0,1] nella cella
+// backend: loads the contents of a slot (CELL x CELL, 8-bit-per-channel RGBA in a uint32 0xRRGGBBAA, row 0 =
+// lowest texel v) and of the text layer (tw x th, same format)
+// Slots can live in a few big textures (atlases): this way polygons close together in drawing order that use
+// different slots of the same atlas end up in the same draw call.
+struct SlotMap { float s0, ds, t0, dt; };          // final coordinates = (s0 + ls * ds, t0 + lt * dt), ls/lt in [0,1] within the cell
 struct Backend {
     virtual ~Backend() {}
     virtual void upload_slot(int slot, const uint32_t* rgba) = 0;
-    virtual bool flip_t() const = 0;               // true: t = 1 in basso (PICA200), false: OpenGL
-    virtual int tex_of(int slot) const { return slot; }          // texture della GPU (atlante) dello slot
-    virtual int slots_per_tex() const { return 1; }              // slot per atlante (gli slot di un atlante sono consecutivi)
+    virtual bool flip_t() const = 0;               // true: t = 1 at the bottom (PICA200), false: OpenGL
+    virtual int tex_of(int slot) const { return slot; }          // GPU texture (atlas) of the slot
+    virtual int slots_per_tex() const { return 1; }              // slots per atlas (the slots of an atlas are consecutive)
     virtual SlotMap slot_map(int) const { return flip_t() ? SlotMap{0, 1, 1, -1} : SlotMap{0, 1, 0, 1}; }
 };
 
@@ -73,10 +73,10 @@ public:
         pal_prev.assign(0x8000, 0xffffffffu); pal_stamp.assign(128, 0); map.clear(); frame = 1; sten_stamp = 0;
     }
 
-    // W x H: area di destinazione (pixel), sc: scala rispetto a 640x480, xoff/yoff: spostamento (es. 40,0 per 320x240 dentro 400x240)
+    // W x H: target area (pixels), sc: scale relative to 640x480, xoff/yoff: offset (e.g. 40,0 for 320x240 inside 400x240)
     void build(const g3d::Frame& F, const std::vector<int>& order, const uint32_t* pal3d, float sc, float xoff, float yoff, float W, float H) {
         verts.clear(); batches.clear(); st = Stats{}; frame++;
-        // palette cambiate (a blocchi di 256 colori, come i pens dei poligoni)
+        // changed palettes (in blocks of 256 colours, like the polygons' pens)
         for (int b = 0; b < 128; b++) if (memcmp(&pal_prev[b * 256], &pal3d[b * 256], 256 * 4)) { memcpy(&pal_prev[b * 256], &pal3d[b * 256], 256 * 4); pal_stamp[b] = frame; }
         pal = pal3d;
         bool sten_checked = false;
@@ -84,28 +84,28 @@ public:
         for (int oi : order) {
             const g3d::Poly& p = F.polys[oi]; const g3d::RD& rd = p.rd;
             if (rd.stencil && !sten_checked) { sten_checked = true; check_stencil(); }
-            // finestra (come gl3d::export_polys / gpu3d scanline)
+            // window (like gl3d::export_polys / gpu3d scanline)
             const float cl = std::lround(((320 - rd.vp_sx) + rd.vp_ox) * sc) + xoff, cr = std::lround(((320 + rd.vp_sx) + rd.vp_ox) * sc) + xoff;
             const float ct = std::lround(((240 - rd.vp_sy) - rd.vp_oy) * sc) + yoff, cb = std::lround(((240 + rd.vp_sy) - rd.vp_oy) * sc) + yoff;
             const float xorg = cl, x0 = std::max({cl, xoff, xorg}), x1 = std::min({cr, xoff + WW, xorg + WW, W}), y0 = std::max({ct, yoff}), y1 = std::min({cb, yoff + HH, ct + HH, H});
             if (x0 >= x1 || y0 >= y1) continue;
             st.polys++;
-            // vertici in coordinate omogenee lineari nello spazio dell'occhio: (x*Z, y*Z, Z, u, v, i)
+            // vertices in linear homogeneous eye-space coordinates: (x*Z, y*Z, Z, u, v, i)
             PolyV& poly = tmp_poly; poly.n = std::min(p.nv, 16);
             for (int k = 0; k < p.nv; k++) {
                 const g3d::PV& q = p.pv[k]; const float w = q.p[0] != 0 ? q.p[0] : 1e-6f, Z = 1.f / w;
                 const float xs = q.x * sc + xorg, ys = q.y * sc + ct;
                 poly[k] = HV{{xs * Z, ys * Z, Z, q.p[1] * Z, q.p[2] * Z, q.p[3] * Z + rd.intensity_base}};
             }
-            // ritaglio: finestra e schermo; il trapezio delle finestre inclinate
+            // clipping: window and screen; the trapezoid of slanted windows
             clip(poly, 0, 2, -x0, 1); clip(poly, 0, 2, x1, -1); clip(poly, 1, 2, -y0, 1); clip(poly, 1, 2, y1, -1);
             if (rd.slant) slant_clip(poly, rd, sc, xoff, yoff);
             if (poly.size() < 3) continue;
-            // celle di texture toccate (spazio u, v grezzo; la tbase entra nella chiave)
+            // texture cells touched (raw u, v space; tbase is part of the key)
             float umin = 1e30f, umax = -1e30f, vmin = 1e30f, vmax = -1e30f;
             for (auto& h : poly) { umin = std::min(umin, h.a[3]); umax = std::max(umax, h.a[3]); vmin = std::min(vmin, h.a[4]); vmax = std::max(vmax, h.a[4]); }
-            // livello di dettaglio: se un pixel copre molti texel (poligono lontano o molto obliquo) la cella prende un
-            // texel ogni 1<<lvl (come una mipmap senza filtro): meno memoria e meno celle, aspetto quasi uguale
+            // level of detail: if a pixel covers many texels (distant or very oblique polygon) the cell takes one
+            // texel every 1<<lvl (like an unfiltered mipmap): less memory and fewer cells, almost the same look
             int lvl = 0;
             {   double sa = 0, ta = 0; const size_t n = poly.size();
                 for (size_t k = 0; k < n; k++) { const HV& A = poly[k]; const HV& B = poly[(k + 1) % n];
@@ -117,7 +117,7 @@ public:
             const int cu0 = (int)std::floor(umin / CS), cu1 = (int)std::floor((umax - 1e-3f) / CS), cv0 = (int)std::floor(vmin / CS), cv1 = (int)std::floor((vmax - 1e-3f) / CS);
             const int ncell = (cu1 - cu0 + 1) * (cv1 - cv0 + 1);
             if (ncell <= 0) continue;
-            if (ncell > 64) { st.dropped++; continue; }                      // poligono che ripete la texture moltissime volte
+            if (ncell > 64) { st.dropped++; continue; }                      // polygon that repeats the texture a huge number of times
             Batch b0; fill_state(b0, rd);
             for (int cu = cu0; cu <= cu1; cu++) for (int cv = cv0; cv <= cv1; cv++) {
                 PolyV& c = tmp_cell; c.copy(poly);
@@ -135,8 +135,8 @@ public:
     }
 
 private:
-    struct HV { float a[6]; };                       // x*Z, y*Z, Z, u, v, i (i: luce assoluta, cioe' gia' + base)
-    // poligono a capacita' fissa: niente allocazioni durante il ritaglio (sul 3DS malloc costa)
+    struct HV { float a[6]; };                       // x*Z, y*Z, Z, u, v, i (i: absolute light, i.e. already + base)
+    // fixed-capacity polygon: no allocations during clipping (malloc is expensive on 3DS)
     struct PolyV {
         HV v[48]; int n = 0;
         size_t size() const { return (size_t)n; } HV& operator[](size_t i) { return v[i]; } const HV& operator[](size_t i) const { return v[i]; }
@@ -150,7 +150,7 @@ private:
     const uint32_t* pal = nullptr;
     uint32_t texbuf[CELL * CELL];
 
-    // tiene la parte dove  s*a[i] + d*a[j] (+ off se j<0) >= 0 ; j = 2 (Z) per i piani dello schermo
+    // keeps the part where  s*a[i] + d*a[j] (+ off if j<0) >= 0 ; j = 2 (Z) for the screen planes
     static void clip(PolyV& p, int i, int j, float d, float s) {
         if (p.size() < 3) return;
         auto f = [&](const HV& h) { return s * h.a[i] + (j >= 0 ? d * h.a[j] : d); };
@@ -163,7 +163,7 @@ private:
         }
         p.copy(o);
     }
-    // finestra a trapezio: x limite = K + M * y (come gl3d::export_polys, convertito in coordinate omogenee)
+    // trapezoid window: limit x = K + M * y (like gl3d::export_polys, converted to homogeneous coordinates)
     static void slant_clip(PolyV& p, const g3d::RD& rd, float sc, float xoff, float yoff) {
         const double cx = 320 + rd.vp_ox;
         for (int k = 0; k < 2; k++) {
@@ -197,8 +197,8 @@ private:
     PolyV tmp_poly, tmp_cell;
     void emit(const PolyV& c, Batch b, const SlotMap& m, const g3d::RD& rd, int cu, int cv, float CS) {
         if (batches.empty() || !batches.back().same(b)) { b.first = (int)verts.size(); b.count = 0; batches.push_back(b); st.batches++; }
-        // mezzo texel di margine sui bordi della cella: con il campionamento "nearest" non si legge mai la cella accanto
-        // nell'atlante (la cella viene stirata di 1/CELL, invisibile)
+        // half a texel of margin at the cell edges: with "nearest" sampling the neighbouring cell is never read
+        // in the atlas (the cell is stretched by 1/CELL, invisible)
         const float in0 = 0.5f / CELL, ink = (CELL - 1.f) / CELL;
         auto mk = [&](const HV& h) {
             V v; const float Z = h.a[2];
@@ -206,9 +206,9 @@ private:
             const float ls = in0 + ink * std::min(1.f, std::max(0.f, (h.a[3] - (float)cu * CS) / CS));
             const float lt = in0 + ink * std::min(1.f, std::max(0.f, (h.a[4] - (float)cv * CS) / CS));
             v.s = m.s0 + ls * m.ds; v.t = m.t0 + lt * m.dt;
-            float sh = rd.shade ? std::min(255.f, std::max(0.f, h.a[5])) : 64.f;     // luce: colore * sh / 64
+            float sh = rd.shade ? std::min(255.f, std::max(0.f, h.a[5])) : 64.f;     // light: colour * sh / 64
             auto ch = [&](int pc) { float x = sh * (rd.pfade ? pc / 256.f : 1.f); return (uint8_t)std::min(255.f, x + 0.5f); };
-            v.r = ch(rd.pcr); v.g = ch(rd.pcg); v.b = ch(rd.pcb); v.a = cur_alpha_all ? b.ca : 255;   // vedi il combinatore
+            v.r = ch(rd.pcr); v.g = ch(rd.pcg); v.b = ch(rd.pcb); v.a = cur_alpha_all ? b.ca : 255;   // see the combiner
             return v;
         };
         const V v0 = mk(c[0]);
@@ -224,11 +224,11 @@ private:
         if (it != map.end()) {
             const int s = it->second;
             if (slot_born[s] >= pal_stamp[pb] && (!k.sten || slot_born[s] >= sten_stamp)) { slot_used[s] = frame; return s; }
-            fill(s, k); slot_born[s] = frame; slot_used[s] = frame; st.new_slots++; return s;   // palette cambiata: si ricarica
+            fill(s, k); slot_born[s] = frame; slot_used[s] = frame; st.new_slots++; return s;   // palette changed: reload
         }
-        int best = -1; uint32_t bu = 0xffffffffu;                                                 // slot libero o usato meno di recente
-        // preferenza: lo stesso atlante del lotto precedente (se ha uno slot libero o non usato da almeno 2 fotogrammi),
-        // cosi' le celle disegnate una dopo l'altra tendono a stare nella stessa texture e i lotti si uniscono
+        int best = -1; uint32_t bu = 0xffffffffu;                                                 // free slot or least recently used
+        // preference: the same atlas as the previous batch (if it has a free slot or one unused for at least 2 frames),
+        // so cells drawn one after the other tend to be in the same texture and the batches merge
         const int per = be->slots_per_tex();
         if (per > 1 && !batches.empty() && batches.back().slot >= 0) {
             const int a0 = batches.back().slot * per, a1 = std::min(nslots, a0 + per);
@@ -254,7 +254,7 @@ private:
                 uint32_t a = 255;
                 if (k.sten && g3d::stencil_lookup(tx, ty)) a = 0;
                 const u32 rgb = g3d::tex_lookup(pal, pens, penshift, penmask, tx, ty + k.tbase, pen);
-                if (!k.sten && pen == k.apen) a = 0;                     // "alpha pen": prende l'alpha del poligono
+                if (!k.sten && pen == k.apen) a = 0;                     // "alpha pen": takes the polygon's alpha
                 texbuf[y * CELL + x] = (rgb << 8) | a;
             }
         }
@@ -262,7 +262,7 @@ private:
     }
 };
 
-// adatta la tabella gamma finale (C404) a una retta g(x) = k*x + b per canale (sulla GPU si applica con il blending)
+// fits the final gamma table (C404) to a line g(x) = k*x + b per channel (on the GPU it is applied with blending)
 inline void gamma_fit(const uint8_t* g, float& k, float& b) {
     double sx = 0, sy = 0, sxx = 0, sxy = 0; for (int x = 0; x < 256; x++) { sx += x; sy += g[x]; sxx += (double)x * x; sxy += (double)x * g[x]; }
     const double n = 256, d = n * sxx - sx * sx; k = (float)((n * sxy - sx * sy) / d); b = (float)((sy - k * sx) / n) / 255.f;

@@ -1,6 +1,6 @@
-// Banco di prova su PC del renderer per il 3DS (pica3d.h): esegue gli stessi lotti con OpenGL a funzioni fisse
-// (texture env combine, come i combinatori del PICA200) in un FBO, per confrontarli con il disegno software.
-// Solo test (S23_PICATEST con S23_GLCMP); richiede un contesto OpenGL di compatibilita'.
+// PC test bench for the 3DS renderer (pica3d.h): runs the same batches with fixed-function OpenGL
+// (texture env combine, like the PICA200 combiners) into an FBO, to compare them with the software renderer.
+// Test only (S23_PICATEST with S23_GLCMP); needs an OpenGL compatibility context.
 #pragma once
 #include <SDL.h>
 #include <vector>
@@ -37,7 +37,7 @@ PT_FN(void, glPushAttrib, (GLenum)) PT_FN(void, glPopAttrib, ())
 struct GLTest : pica::Backend {
     std::vector<GLuint> tex; GLuint white = 0, fbo = 0, out = 0; int ow = 0, oh = 0; bool ok = false;
     bool flip_t() const override { return false; }
-    int per = 1;                                       // slot per atlante (64 = atlanti 1024x1024 come sul 3DS; S23_PICAATLAS)
+    int per = 1;                                       // slots per atlas (64 = 1024x1024 atlases like on 3DS; S23_PICAATLAS)
     int tex_of(int s) const override { return s / per; }
     int slots_per_tex() const override { return per; }
     pica::SlotMap slot_map(int s) const override {
@@ -54,7 +54,7 @@ struct GLTest : pica::Backend {
     }
     bool init(int slots, int per_atlas = 1) {
         per = per_atlas > 1 ? 64 : 1; const int ntex = (slots + per - 1) / per, side = per > 1 ? 1024 : pica::CELL;
-#define L(n) n = (decltype(n))SDL_GL_GetProcAddress(#n); if (!n) { printf("PICATEST: manca %s\n", #n); return false; }
+#define L(n) n = (decltype(n))SDL_GL_GetProcAddress(#n); if (!n) { printf("PICATEST: missing %s\n", #n); return false; }
         L(glGenTextures) L(glBindTexture) L(glTexImage2D) L(glTexSubImage2D) L(glTexParameteri) L(glTexEnvi) L(glTexEnvfv) L(glActiveTexture) L(glEnable) L(glDisable)
         L(glBlendFunc) L(glBlendColor) L(glAlphaFunc) L(glGenFramebuffers) L(glBindFramebuffer) L(glFramebufferTexture2D) L(glViewport) L(glClearColor) L(glClear)
         L(glMatrixMode) L(glLoadIdentity) L(glOrtho) L(glBegin) L(glEnd) L(glVertex4f) L(glTexCoord2f) L(glColor4ub) L(glMultiTexCoord2f) L(glReadPixels) L(glGetIntegerv)
@@ -66,7 +66,7 @@ struct GLTest : pica::Backend {
         glGenFramebuffers(1, &fbo); ok = true; return true;
     }
     static void params() { glTexParameteri(TEXTURE_2D, TEX_MIN, NEAREST); glTexParameteri(TEXTURE_2D, TEX_MAG, NEAREST); glTexParameteri(TEXTURE_2D, WRAP_S, CLAMP_EDGE); glTexParameteri(TEXTURE_2D, WRAP_T, CLAMP_EDGE); }
-    // disegna i lotti in un'immagine W x H (RGB, riga 0 in alto)
+    // draws the batches into a W x H image (RGB, row 0 at the top)
     void draw(const pica::Renderer& r, int W, int H, std::vector<uint8_t>& rgb) {
         GLint prevFbo = 0, prevProg = 0, prevVp[4], prevAct = 0, prevTex = 0, prevBuf = 0, prevVao = 0;
         glGetIntegerv(FRAMEBUFFER_BINDING, &prevFbo); glGetIntegerv(CURRENT_PROGRAM, &prevProg); glGetIntegerv(VIEWPORT, prevVp); glGetIntegerv(ACTIVE_TEXTURE, &prevAct);
@@ -76,7 +76,7 @@ struct GLTest : pica::Backend {
         glBindFramebuffer(FRAMEBUFFER, fbo); glFramebufferTexture2D(FRAMEBUFFER, COLOR_ATTACHMENT0, TEXTURE_2D, out, 0);
         glUseProgram(0); glBindBuffer(ARRAY_BUFFER, 0); glBindVertexArray(0);
         glViewport(0, 0, W, H); glClearColor(0, 0, 0, 1); glClear(COLOR_BUFFER_BIT);
-        glMatrixMode(PROJECTION); glLoadIdentity(); glOrtho(0, W, 0, H, -1, 1); glMatrixMode(MODELVIEW); glLoadIdentity();   // y in basso: la lettura capovolge
+        glMatrixMode(PROJECTION); glLoadIdentity(); glOrtho(0, W, 0, H, -1, 1); glMatrixMode(MODELVIEW); glLoadIdentity();   // y at the bottom: the readback flips it
         glDisable(DEPTH_TEST); glDisable(CULL_FACE); glDisable(SCISSOR); glEnable(ALPHA_TEST); glAlphaFunc(GREATER, 0.f);
         for (const pica::Batch& b : r.batches) {
             glActiveTexture(TEXTURE0); glEnable(TEXTURE_2D); glBindTexture(TEXTURE_2D, b.slot >= 0 ? tex[b.slot] : white);
@@ -100,7 +100,7 @@ struct GLTest : pica::Backend {
             for (int i = b.first; i < b.first + b.count; i++) {
                 const pica::V& v = r.verts[i];
                 glMultiTexCoord2f(TEXTURE0, v.s, v.t); glColor4ub(v.r, v.g, v.b, v.a);
-                glVertex4f(v.x, (float)H * v.w - v.y, v.z * 0, v.w);                  // y capovolta (H - y), sempre moltiplicata per w
+                glVertex4f(v.x, (float)H * v.w - v.y, v.z * 0, v.w);                  // y flipped (H - y), always multiplied by w
             }
             glEnd();
         }

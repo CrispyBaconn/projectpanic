@@ -1,9 +1,9 @@
-// Menu principale e impostazioni (incluso da frontend.h). Due schermate:
-//   HOME: logo, GIOCA (o RIPRENDI in gioco), IMPOSTAZIONI, ESCI
-//   IMPOSTAZIONI: schede Comandi / Controller e tocco / Video / Gioco, righe grandi da toccare
-// Si usa allo stesso modo con mouse, dito, tastiera e controller: il puntatore sceglie e preme, frecce/croce/stick
-// spostano la selezione, Invio/A conferma, Esc/B torna indietro, Q/E o LB/RB (anche Tab) cambiano scheda.
-// Ritorna true per avviare (o riprendere) il gioco, false per uscire.
+// Main menu and settings (included by frontend.h). Two screens:
+//   HOME: logo, PLAY (or RESUME in game), SETTINGS, EXIT
+//   SETTINGS: tabs Controls / Controller and touch / Video / Game, large rows to tap
+// It is used the same way with mouse, finger, keyboard and controller: the pointer chooses and presses, arrows/d-pad/stick
+// move the selection, Enter/A confirms, Esc/B goes back, Q/E or LB/RB (also Tab) change tab.
+// Returns true to start (or resume) the game, false to exit.
 #pragma once
 #include "ui.h"
 
@@ -14,7 +14,7 @@ static std::string ui_dir() {
     return "ui";
 }
 
-// nome leggibile del pulsante del controller
+// readable name of the controller button
 static std::string pad_label(int b) {
     switch (b) {
         case -1: return "-";
@@ -36,12 +36,12 @@ static bool launcher(SDL_Window* win, SDL_Renderer* ren, InputState& is, bool in
     if (U_ren != ren) { U = Ui(); U.init(ren, ui_dir()); U_ren = ren; }
     auto T = [](const char* k) { return i18n::tru(k); };
 
-    // ---------------------------------------------------------------- stato
+    // ---------------------------------------------------------------- state
     enum Screen { HOME, SETTINGS };
     enum Dev { D_KEYS, D_PAD, D_POINTER };
     Screen scr = HOME; int home_sel = 0, tab = 0, row = 0, col = 0;
-    float scroll = 0, scroll_draw = 0; bool follow = true;          // follow: la lista segue la selezione (tastiera/controller)
-    int waiting = -1;                                               // azione in attesa di un tasto/pulsante
+    float scroll = 0, scroll_draw = 0; bool follow = true;          // follow: the list follows the selection (keyboard/controller)
+    int waiting = -1;                                               // action waiting for a key/button
     int confirm_reset = 0; bool quit = false, start = false;
     Dev dev = !pads.list.empty() ? D_PAD : D_KEYS;
 #if defined(__ANDROID__)
@@ -56,7 +56,7 @@ static bool launcher(SDL_Window* win, SDL_Renderer* ren, InputState& is, bool in
         int k = i18n::cur(); k = (k < 0 ? 0 : (k + d + (int)L.size()) % (int)L.size()); c.ui_lang = L[k].code; i18n::select(c.ui_lang); };
     auto set_fs = [&](int v) { c.fullscreen = v; SDL_SetWindowFullscreen(win, c.fullscreen ? SDL_WINDOW_FULLSCREEN_DESKTOP : 0); };
 
-    // ---------------------------------------------------------------- righe delle impostazioni
+    // ---------------------------------------------------------------- settings rows
     enum Kind { K_BIND, K_TOGGLE, K_CYCLE, K_SLIDER, K_ACTION };
     struct Row { Kind k; std::string label; int act = 0; bool* dummy = nullptr; int* iv = nullptr; int lo = 0, hi = 0, step = 1; std::string val; bool on = false; int id = 0; };
     enum { R_DZ = 100, R_SENS, R_INV, R_AXIS, R_TOUCHUI, R_FS, R_RES, R_GPU, R_FPS, R_WIDE, R_UILANG, R_GAMELANG, R_POST, R_SVC, R_RESET };
@@ -90,7 +90,7 @@ static bool launcher(SDL_Window* win, SDL_Renderer* ren, InputState& is, bool in
         }
         return v;
     };
-    auto change = [&](const Row& r, int d) {                         // d = -1 / +1; 0 = conferma (Invio, A, tocco)
+    auto change = [&](const Row& r, int d) {                         // d = -1 / +1; 0 = confirm (Enter, A, tap)
         int s = d ? d : 1;
         switch (r.id) {
             case R_DZ: c.deadzone = std::max(0, std::min(60, c.deadzone + 2 * s)); break;
@@ -107,7 +107,7 @@ static bool launcher(SDL_Window* win, SDL_Renderer* ren, InputState& is, bool in
         if (r.id != R_RESET) confirm_reset = 0;
     };
 
-    // ---------------------------------------------------------------- zone toccabili (dal fotogramma precedente)
+    // ---------------------------------------------------------------- touch zones (from the previous frame)
     enum HitT { H_HOME, H_TAB, H_BACK, H_ROW, H_CELL, H_LEFT, H_RIGHT, H_SLIDER, H_CANCEL, H_PANEL };
     struct Hit { SDL_FRect r; HitT t; int a, b; };
     std::vector<Hit> hits, hits_prev;
@@ -119,14 +119,14 @@ static bool launcher(SDL_Window* win, SDL_Renderer* ren, InputState& is, bool in
         return nullptr;
     };
     bool mdown = false, dragging = false; float md_x = 0, md_y = 0, md_scroll = 0; bool md_in_panel = false;
-    // stick analogico come croce direzionale, con ripetizione
+    // analog stick as d-pad, with repeat
     int stick_dir = 0; Uint32 stick_next = 0;
     float LW = 1280, LH = 720;
     auto go = [&](Screen s) { scr = s; t_screen = SDL_GetTicks(); waiting = -1; confirm_reset = 0; if (s == SETTINGS) { row = 0; col = 0; scroll = scroll_draw = 0; follow = true; } };
     auto set_tab = [&](int t) { tab = (t + 4) % 4; row = 0; col = 0; scroll = 0; follow = true; confirm_reset = 0; };
     auto activate_home = [&](int i) { if (i == 0) start = true; else if (i == 1) go(SETTINGS); else quit = true; };
 
-    // ---------------------------------------------------------------- comandi astratti
+    // ---------------------------------------------------------------- abstract commands
     auto nav = [&](int dx, int dy, bool ok, bool back, int tabd) {
         if (scr == HOME) {
             if (dy) home_sel = (home_sel + dy + 3) % 3;
@@ -146,7 +146,7 @@ static bool launcher(SDL_Window* win, SDL_Renderer* ren, InputState& is, bool in
     };
 
     while (!quit && !start) {
-        // area logica: altezza 720, larghezza secondo la finestra (4:3 ... 21:9)
+        // logical area: height 720, width depending on the window (4:3 ... 21:9)
         { int ow = 1280, oh = 720; SDL_GetRendererOutputSize(ren, &ow, &oh); if (oh <= 0) oh = 1;
           LW = std::max(960.f, std::min(1700.f, roundf(720.f * ow / oh))); LH = 720;
           SDL_RenderSetLogicalSize(ren, (int)LW, (int)LH); U.W = LW; U.H = LH; }
@@ -160,7 +160,7 @@ static bool launcher(SDL_Window* win, SDL_Renderer* ren, InputState& is, bool in
             if (e.type == SDL_MOUSEBUTTONDOWN || e.type == SDL_FINGERDOWN || (e.type == SDL_MOUSEMOTION && e.motion.which != SDL_TOUCH_MOUSEID && (abs(e.motion.xrel) + abs(e.motion.yrel)) > 2)) dev = D_POINTER;
             const bool kd = e.type == SDL_KEYDOWN, cb = e.type == SDL_CONTROLLERBUTTONDOWN;
             if (kd && e.key.keysym.sym == SDLK_F11) { set_fs(!c.fullscreen); continue; }
-            // ---- attesa di un nuovo tasto / pulsante
+            // ---- waiting for a new key / button
             if (waiting >= 0) {
                 const int a = waiting;
                 if (kd && !e.key.repeat) {
@@ -196,7 +196,7 @@ static bool launcher(SDL_Window* win, SDL_Renderer* ren, InputState& is, bool in
             }
             if (scr == HOME && tabd) tabd = 0;
             if (dx || dy || ok || back || tabd) { nav(dx, dy, ok, back, tabd); continue; }
-            // ---- puntatore (mouse o dito: SDL trasforma i tocchi in clic)
+            // ---- pointer (mouse or finger: SDL turns taps into clicks)
             if (e.type == SDL_MOUSEWHEEL && scr == SETTINGS) { scroll -= e.wheel.y * 66.f; follow = false; }
             if (e.type == SDL_MOUSEBUTTONDOWN && e.button.button == SDL_BUTTON_LEFT) {
                 mdown = true; dragging = false; md_x = (float)e.button.x; md_y = (float)e.button.y; md_scroll = scroll;
@@ -207,7 +207,7 @@ static bool launcher(SDL_Window* win, SDL_Renderer* ren, InputState& is, bool in
             if (e.type == SDL_MOUSEMOTION) {
                 const float mx = (float)e.motion.x, my = (float)e.motion.y;
                 if (mdown && md_in_panel && (dragging || fabsf(my - md_y) > 14.f)) { dragging = true; scroll = md_scroll - (my - md_y); follow = false; }
-                if (!mdown && e.motion.which != SDL_TOUCH_MOUSEID) {          // passaggio del mouse = selezione
+                if (!mdown && e.motion.which != SDL_TOUCH_MOUSEID) {          // mouse hover = selection
                     if (const Hit* h = hit_at(mx, my, false)) {
                         if (h->t == H_HOME) home_sel = h->a;
                         else if (h->t == H_ROW || h->t == H_LEFT || h->t == H_RIGHT || h->t == H_SLIDER) { if (row != h->a) confirm_reset = 0; row = h->a; follow = false; }
@@ -238,7 +238,7 @@ static bool launcher(SDL_Window* win, SDL_Renderer* ren, InputState& is, bool in
                 }
             }
         }
-        // ---- stick sinistro come croce (con ripetizione)
+        // ---- left stick as d-pad (with repeat)
         if (waiting < 0 && !pads.list.empty()) {
             float ax = pads.axis(SDL_CONTROLLER_AXIS_LEFTX), ay = pads.axis(SDL_CONTROLLER_AXIS_LEFTY);
             int d = fabsf(ay) > 0.6f && fabsf(ay) >= fabsf(ax) ? (ay > 0 ? 2 : 1) : fabsf(ax) > 0.6f ? (ax > 0 ? 4 : 3) : 0;
@@ -246,7 +246,7 @@ static bool launcher(SDL_Window* win, SDL_Renderer* ren, InputState& is, bool in
             if (d && now >= stick_next) { dev = D_PAD; nav(d == 3 ? -1 : d == 4 ? 1 : 0, d == 1 ? -1 : d == 2 ? 1 : 0, false, false, 0); stick_next = now + (stick_next == now ? 380 : 110); }
         }
 
-        // ================================================================ disegno
+        // ================================================================ drawing
         const float t = (now - t_open) / 1000.f, ts = (now - t_screen) / 1000.f;
         hits.clear();
         SDL_SetRenderDrawBlendMode(ren, SDL_BLENDMODE_BLEND);
@@ -254,7 +254,7 @@ static bool launcher(SDL_Window* win, SDL_Renderer* ren, InputState& is, bool in
         U.background(t, scr == HOME ? 0.55f : 0.9f);
         const float W = LW, H = LH;
 
-        // ---- barra dei suggerimenti in basso (cambia con l'ultimo dispositivo usato)
+        // ---- hint bar at the bottom (changes with the last device used)
         auto hint_bar = [&](const std::vector<std::pair<std::string, std::string>>& items) {
             U.rect(0, H - 52, W, 52, rgba(5, 12, 30, 150), rgba(5, 12, 30, 225));
             U.rect(0, H - 52, W, 3, alpha(YEL, 0.8f), alpha(ORA, 0.8f));
@@ -264,14 +264,14 @@ static bool launcher(SDL_Window* win, SDL_Renderer* ren, InputState& is, bool in
                 U.text(U.body, x, H - 26, it->second, 24, WHITE, WHITE, INK, true, false);
                 x -= 12;
                 const std::string& g = it->first;
-                if (dev == D_PAD) {                                 // pulsante del controller: cerchio colorato (A verde, B rosso, X blu, Y giallo)
+                if (dev == D_PAD) {                                 // controller button: coloured circle (A green, B red, X blue, Y yellow)
                     SDL_Color bc = g == "A" ? GREEN : g == "B" ? RED : g == "X" ? rgba(40, 110, 230) : g == "Y" ? rgba(230, 180, 20) : rgba(70, 80, 100);
                     float gw = std::max(34.f, U.text_w(U.body, g, 20) + 20);
                     if (g.size() <= 1) U.circle(x - 17, H - 26, 17, INK), U.circle(x - 17, H - 26, 15, bc);
                     else U.rrect_ol(x - gw, H - 42, gw, 32, 12, rgba(90, 100, 125), rgba(50, 58, 80), 2, INK);
                     U.text(U.body, x - (g.size() <= 1 ? 17 : gw / 2), H - 26, g, 20, WHITE, WHITE, INK, false, false, 1);
                     x -= (g.size() <= 1 ? 34 : gw) + 26;
-                } else {                                            // tasto della tastiera
+                } else {                                            // keyboard key
                     float gw = std::max(34.f, U.text_w(U.body, g, 20) + 18);
                     U.rrect_ol(x - gw, H - 42, gw, 32, 6, rgba(240, 240, 248), rgba(190, 196, 210), 2, INK);
                     U.text(U.body, x - gw / 2, H - 26, g, 20, INK, INK, INK, false, false, 1);
@@ -282,10 +282,10 @@ static bool launcher(SDL_Window* win, SDL_Renderer* ren, InputState& is, bool in
         auto pad_or_key = [&](const char* pad, const char* key) { return std::string(dev == D_PAD ? pad : key); };
 
         if (scr == HOME) {
-            // ---------------------------------------------------- schermata principale
+            // ---------------------------------------------------- main screen
             const float lh = H * 0.40f;
             U.title(W / 2, 40 + lh / 2 + (ingame ? 14 : 0), std::min(W * 0.62f, 760.f), lh, t);
-            if (ingame) {                                           // etichetta "PAUSA"
+            if (ingame) {                                           // "PAUSED" label
                 float pw = U.text_w(U.disp, T("paused"), 34) + 44;
                 U.poly(Ui::para_pts(W / 2 - pw / 2 - 4, 10 - 4, pw + 8, 52, 14), INK, INK, 0, 1);
                 U.poly(Ui::para_pts(W / 2 - pw / 2, 10, pw, 44, 12), RED, rgba(150, 10, 20), 10, 54);
@@ -301,8 +301,8 @@ static bool launcher(SDL_Window* win, SDL_Renderer* ren, InputState& is, bool in
                 float w = bw[i] * pulse, h = bh[i] * pulse, x = W / 2 - w / 2, yy = y + (1 - in) * 120 - (h - bh[i]) / 2;
                 const float sk = h * 0.28f;
                 if (sel) U.burst(W / 2, yy + h / 2, w * 0.58f, h * 0.95f, 14, t * 0.6f, alpha(YEL, 0.22f * in));
-                U.poly(Ui::para_pts(x - 6 + 4, yy - 6 + 7, w + 12, h + 12, sk), alpha(INK, 0.5f * in), alpha(INK, 0.5f * in), 0, 1);   // ombra
-                U.poly(Ui::para_pts(x - 6, yy - 6, w + 12, h + 12, sk), alpha(INK, in), alpha(INK, in), 0, 1);                       // contorno
+                U.poly(Ui::para_pts(x - 6 + 4, yy - 6 + 7, w + 12, h + 12, sk), alpha(INK, 0.5f * in), alpha(INK, 0.5f * in), 0, 1);   // shadow
+                U.poly(Ui::para_pts(x - 6, yy - 6, w + 12, h + 12, sk), alpha(INK, in), alpha(INK, in), 0, 1);                       // outline
                 if (sel) {
                     U.poly(Ui::para_pts(x, yy, w, h, sk), rgba(190, 190, 190, (int)(255 * in)), rgba(190, 190, 190, (int)(255 * in)), yy, yy + h, U.chev, {0, (float)fmod(t * 0.15, 1.0) * 0.2f, 1, 0.8f}, x, w);
                     U.poly(Ui::para_pts(x, yy + h * 0.55f, w, h * 0.45f, sk * 0.45f), alpha(INK, 0), alpha(INK, 0.35f * in), yy + h * 0.55f, yy + h);
@@ -316,15 +316,15 @@ static bool launcher(SDL_Window* win, SDL_Renderer* ren, InputState& is, bool in
                 hits.push_back({{x, yy, w, h}, H_HOME, i, 0});
                 y += bh[i] + 22;
             }
-            // controller collegato e sottotitolo
+            // connected controller and subtitle
             std::string cn = pads.name();
             if (dev == D_POINTER) hint_bar({});
             else hint_bar({{pad_or_key("A", T("key_enter").c_str()), T("h_select")}, {pad_or_key("B", "Esc"), T(ingame ? "h_resume" : "h_back")}});
             U.text(U.body, 24, H - 26, cn.empty() ? T("ctrl_none_short") : cn, 20, cn.empty() ? GREY : CYAN, cn.empty() ? GREY : CYAN, INK, true, false, 0, W * 0.3f);
         } else {
-            // ---------------------------------------------------- impostazioni
+            // ---------------------------------------------------- settings
             const float PW = std::min(W - 60, 1180.f), PX = (W - PW) / 2;
-            // titolo e pulsante indietro
+            // title and back button
             U.text(U.disp, W / 2, 50, T("settings"), 56, YEL, RED, INK, true, true, 1);
             {   float bx = PX, by = 24, bw2 = 64 + U.text_w(U.body, T("back"), 26), bh2 = 52;
                 U.rrect_ol(bx, by, bw2, bh2, 26, rgba(46, 104, 196), rgba(16, 44, 104), 3, INK);
@@ -332,9 +332,9 @@ static bool launcher(SDL_Window* win, SDL_Renderer* ren, InputState& is, bool in
                 U.text(U.body, bx + 50, by + bh2 / 2, T("back"), 26, WHITE, WHITE, INK, true, false);
                 hits.push_back({{bx - 8, by - 8, bw2 + 16, bh2 + 16}, H_BACK, 0, 0});
             }
-            // schede
+            // tabs
             const float ty = 96, th = 56; float tw = (PW - 3 * 10) / 4;
-            if (dev == D_PAD || dev == D_KEYS) {                    // LB / RB ai lati
+            if (dev == D_PAD || dev == D_KEYS) {                    // LB / RB at the sides
                 const char* l = dev == D_PAD ? "LB" : "Q"; const char* r = dev == D_PAD ? "RB" : "E";
                 U.text(U.body, PX - 8, ty + th / 2, l, 22, GREY, GREY, INK, true, false, 2);
                 U.text(U.body, PX + PW + 8, ty + th / 2, r, 22, GREY, GREY, INK, true, false, 0);
@@ -348,7 +348,7 @@ static bool launcher(SDL_Window* win, SDL_Renderer* ren, InputState& is, bool in
                 U.text(U.disp, x + tw / 2, ty + th / 2 + 1, T(TABS[i]), s ? 34 : 30, s ? YEL : rgba(205, 225, 255), s ? RED : rgba(160, 190, 235), INK, true, s, 1, tw - 36);
                 hits.push_back({{x, ty - 6, tw, th + 12}, H_TAB, i, 0});
             }
-            // pannello
+            // panel
             const float py = ty + th + 16, ph = H - 52 - 14 - py;
             U.rrect_ol(PX, py, PW, ph, 18, rgba(10, 28, 70, 225), rgba(6, 16, 44, 235), 4, INK);
             hits.push_back({{PX, py, PW, ph}, H_PANEL, 0, 0});
@@ -356,7 +356,7 @@ static bool launcher(SDL_Window* win, SDL_Renderer* ren, InputState& is, bool in
             float hy = py + 10;
             const float RH = 64, gap = 6, lx = PX + 18, rw = PW - 36;
             const float cells_x = lx + rw * 0.40f, cw = (rw * 0.60f - 2 * 10) / 3;
-            if (tab == 0) {                                          // intestazione delle colonne (fissa)
+            if (tab == 0) {                                          // column header (fixed)
                 const char* H3[3] = {"col_kb1", "col_kb2", "col_pad"};
                 for (int k = 0; k < 3; k++) U.text(U.body, cells_x + k * (cw + 10) + cw / 2, hy + 14, T(H3[k]), 22, CYAN, CYAN, INK, true, false, 1, cw);
                 hy += 32;
@@ -378,7 +378,7 @@ static bool launcher(SDL_Window* win, SDL_Renderer* ren, InputState& is, bool in
                     U.rrect(lx, y, rw, RH, 12, rgba(44, 100, 190, 245), rgba(26, 62, 140, 245));
                                         U.poly({{lx, y + 6}, {lx + 10, y + 6}, {lx + 10, y + RH - 6}, {lx, y + RH - 6}}, WHITE, WHITE, y, y + RH, U.chev, {0, 0, 0.03f, 0.6f}, lx, 10);
                 } else U.rrect(lx, y, rw, RH, 12, rgba(255, 255, 255, 14), rgba(255, 255, 255, 8));
-                // clic sull'intera riga
+                // click on the whole row
                 SDL_FRect rr{lx, std::max(y, list_top), rw, std::min(y + RH, list_top + list_h) - std::max(y, list_top)};
                 if (rr.h > 4) hits.push_back({rr, H_ROW, i, 0});
                 const SDL_Color lc = sel ? YEL : WHITE;
@@ -400,13 +400,13 @@ static bool launcher(SDL_Window* win, SDL_Renderer* ren, InputState& is, bool in
                     }
                 } else {
                     const float vw = std::min(rw * 0.46f, 470.f), vx = lx + rw - vw - 12, vy = y + 8, vh = RH - 16;
-                    if (r.k == K_TOGGLE) {                           // interruttore
+                    if (r.k == K_TOGGLE) {                           // switch
                         const float sw = 96, sh = vh - 6, sx = lx + rw - sw - 22, sy = vy + 3;
                         U.rrect_ol(sx, sy, sw, sh, sh / 2, r.on ? rgba(60, 200, 90) : rgba(70, 76, 96), r.on ? rgba(20, 140, 60) : rgba(40, 44, 60), 3, INK);
                         const float kx = r.on ? sx + sw - sh / 2 : sx + sh / 2;
                         U.circle(kx, sy + sh / 2, sh / 2 - 2, INK); U.circle(kx, sy + sh / 2, sh / 2 - 5, r.on ? YEL : rgba(220, 225, 235));
                         U.text(U.body, sx - 14, sy + sh / 2, r.on ? T("yes") : T("no"), 24, r.on ? rgba(150, 255, 170) : GREY, r.on ? rgba(150, 255, 170) : GREY, INK, true, false, 2);
-                    } else {                                         // valore con frecce (e barra per le percentuali)
+                    } else {                                         // value with arrows (and a bar for percentages)
                         U.rrect_ol(vx, vy, vw, vh, vh / 2, rgba(6, 16, 40), rgba(10, 24, 56), 2, sel ? YEL : rgba(70, 110, 180));
                         U.arrow(vx + 24, vy + vh / 2, 12, -1, sel ? YEL : rgba(140, 170, 220), sel);
                         U.arrow(vx + vw - 24, vy + vh / 2, 12, 1, sel ? YEL : rgba(140, 170, 220), sel);
@@ -424,7 +424,7 @@ static bool launcher(SDL_Window* win, SDL_Renderer* ren, InputState& is, bool in
                 }
             }
             SDL_RenderSetClipRect(ren, nullptr);
-            if (max_scroll > 1) {                                    // barra di scorrimento
+            if (max_scroll > 1) {                                    // scroll bar
                 const float sbh = list_h * list_h / content_h, sby = list_top + (list_h - sbh) * (scroll_draw / max_scroll);
                 U.rrect(PX + PW - 9, sby, 5, sbh, 2.5f, alpha(WHITE, 0.5f), alpha(WHITE, 0.3f));
             }
@@ -433,7 +433,7 @@ static bool launcher(SDL_Window* win, SDL_Renderer* ren, InputState& is, bool in
             else hint_bar({{pad_or_key("A", T("key_enter").c_str()), T("h_change")}, {pad_or_key("LB RB", "Q E"), T("h_tabs")}, {pad_or_key("B", "Esc"), T("back")}});
             if (dev == D_POINTER) U.text(U.body, 24, H - 26, T(tab == 0 ? "h_touch_bind" : "h_touch"), 21, GREY, GREY, INK, true, false, 0, W - 48);
 
-            // ---- finestra "premi un tasto"
+            // ---- "press a key" window
             if (waiting >= 0) {
                 hits.clear();
                 U.rect(0, 0, W, H, rgba(0, 0, 0, 150), rgba(0, 0, 0, 190));
@@ -451,7 +451,7 @@ static bool launcher(SDL_Window* win, SDL_Renderer* ren, InputState& is, bool in
                 }
             }
         }
-        // dissolvenza al cambio di schermata
+        // fade on screen change
         if (ts < 0.18f) U.rect(0, 0, W, H, rgba(0, 0, 0, (int)(180 * (1 - ts / 0.18f))), rgba(0, 0, 0, (int)(180 * (1 - ts / 0.18f))));
         hits_prev = hits;
         { static int fm = 0; if (g_menu_shot && ingame && ++fm % 40 == 0) { g_menu_shot(ren); start = true; } }

@@ -1,4 +1,4 @@
-// Harness livello 2: funzioni reali del gioco. RAM inizializzata da ram_init.bin; log delle scritture.
+// Level 2 harness: real game functions. RAM initialised from ram_init.bin; log of the writes.
 #include "../runtime.h"
 #include <cstdio>
 #include <cstdlib>
@@ -41,7 +41,7 @@ int main(int argc, char** argv) {
         g_status = 0; g_wlog.clear();
         try { g_tests[cs.idx](&c); } catch (StepLimit&) { g_status = 2; } catch (Trap&) {}
         std::sort(g_wlog.begin(), g_wlog.end()); g_wlog.erase(std::unique(g_wlog.begin(), g_wlog.end()), g_wlog.end());
-        bool too_big = g_wlog.size() > 200000;            // es. azzeramento di una regione enorme: caso non confrontabile
+        bool too_big = g_wlog.size() > 200000;            // e.g. clearing a huge region: case not comparable
         if (too_big && g_status == 0) g_status = 7;
         uint32_t head[1 + 32 + 2 + 32 + 1 + 1];
         int k = 0; head[k++] = g_status; for (int j = 0; j < 32; j++) head[k++] = c.r[j];

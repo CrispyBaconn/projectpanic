@@ -1,20 +1,20 @@
 #!/usr/bin/env python3
 """
-mips2cpp.py - traduttore statico MIPS (R4650 / MIPS III subset) -> C++.
+mips2cpp.py - static translator MIPS (R4650 / MIPS III subset) -> C++.
 
-Modello di esecuzione:
-  * una funzione C++ per funzione MIPS, firma  void f_XXXXXXXX(CPU* c)
-  * i salti interni diventano goto, jal diventa una chiamata C++, jr $ra diventa return
-  * i delay slot sono espansi in linea; le branch-likely eseguono il delay slot solo se prese
-  * jr (non $ra) -> switch sui target della tabella di salto (o tail call)
-  * jalr -> call_guest(c, indirizzo)  (tabella indirizzo->funzione generata)
-  * sugli archi all'indietro viene inserito BACKEDGE(c): serve per consegnare interrupt
+Execution model:
+  * one C++ function per MIPS function, signature  void f_XXXXXXXX(CPU* c)
+  * internal branches become goto, jal becomes a C++ call, jr $ra becomes return
+  * delay slots are expanded inline; branch-likely instructions execute the delay slot only when taken
+  * jr (not $ra) -> switch over the jump table targets (or tail call)
+  * jalr -> call_guest(c, address)  (generated address->function table)
+  * BACKEDGE(c) is inserted on backward branches: it is used to deliver interrupts
 """
 import argparse, collections, csv, os, struct, sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from mipsdec import decode, BRANCH, LIKELY
 
-TEXT_LO = 0x80000320          # sotto: vettori di eccezione, sostituiti dal runtime
+TEXT_LO = 0x80000320          # below: exception vectors, replaced by the runtime
 JUMPS = {'j', 'jal', 'jr', 'jalr'}
 
 
@@ -44,7 +44,7 @@ def always_taken(d):
 
 
 def emit_plain(d, pc):
-    """Istruzione non di controllo -> lista di righe C++."""
+    """Non-control instruction -> list of C++ lines."""
     op = d['op']; rs, rt, rd = d['rs'], d['rt'], d['rd']
     sa, imm, uimm = d['sa'], d['imm'], d['uimm']
     fs, ft, fd = d['fs'], d['ft'], d['fd']
@@ -125,8 +125,8 @@ def emit_plain(d, pc):
 
 class Translator:
     def __init__(self, read_word, text_lo, text_hi, entries, read_data=None):
-        self.rw = read_word            # indirizzo -> word (codice)
-        self.rd_data = read_data       # indirizzo -> word (dati/rodata) per le tabelle di salto
+        self.rw = read_word            # address -> word (code)
+        self.rd_data = read_data       # address -> word (data/rodata) for jump tables
         self.lo, self.hi = text_lo, text_hi
         self.entries = sorted(set(entries))
         self._dec = {}
@@ -158,8 +158,8 @@ class Translator:
         return None
 
     def find_table(self, start, end, pc):
-        """jr rs <- lw rs,off(rb) <- addu rb,x,y <- (lui/addiu su x o y, anche lontano).
-        Ritorna i target se TUTTE le voci (fino al limite da sltiu) cadono nella funzione."""
+        """jr rs <- lw rs,off(rb) <- addu rb,x,y <- (lui/addiu on x or y, even far away).
+        Returns the targets if ALL entries (up to the limit from sltiu) fall inside the function."""
         if self.rd_data is None: return None
         jr = self.dec(pc); target_reg = jr['rs']
         lw = None
@@ -189,7 +189,7 @@ class Translator:
                 elif d['op'] == 'lui' and not widened:
                     hi = d['uimm'] << 16; break
                 elif widened and len(cands) > 1:
-                    cands.discard(ds)        # era l'indice (es. sll v0,v1,2): resta solo la base
+                    cands.discard(ds)        # was the index (e.g. sll v0,v1,2): only the base remains
                 else:
                     return None
             p -= 4
@@ -242,7 +242,7 @@ class Translator:
                 continue
             if start <= t < end: labels.add(t)
             elif self.lo <= t < self.hi and t not in self.entries: ext.add(t)
-        # etichetta sul delay slot -> serve anche pc+8
+        # label on the delay slot -> pc+8 is needed too
         in_delay = False
         for i in range(n):
             pc = start + 4 * i
@@ -254,7 +254,7 @@ class Translator:
                     labels.add(pc + 8)
                     self.stats['label_on_delay_slot'] += 1
                     if d['op'] in ('j', 'jr', 'jalr') or always_taken(d):
-                        self.warn.append(f'{pc:#x}: etichetta sul delay slot di un salto incondizionato')
+                        self.warn.append(f'{pc:#x}: label on the delay slot of an unconditional jump')
         return labels, ext, jrs
 
     # ---------------------------------------------------------- emit
@@ -272,7 +272,7 @@ class Translator:
     def emit_ctrl(self, d, pc, start, end, labels, jrs):
         dly = self.dec(pc + 4)
         if is_ctrl(dly):
-            self.warn.append(f'{pc:#x}: salto nel delay slot')
+            self.warn.append(f'{pc:#x}: branch in the delay slot')
             return [f'guest_unimpl(c, {pc:#x}u, {d["w"]:#x}u);']
         dl = emit_plain(dly, pc + 4)
         op = d['op']
@@ -339,7 +339,7 @@ class Translator:
         return out
 
     def closure(self, roots, limit_rounds=8):
-        """Aggiunge agli entry i target di salto esterni finche' stabile."""
+        """Adds external branch targets to the entries until stable."""
         for _ in range(limit_rounds):
             new = set()
             for s in list(roots):
@@ -350,14 +350,14 @@ class Translator:
             if not new: return
             self.entries = sorted(set(self.entries) | new)
             roots = set(roots) | new
-            self.stats['entries_aggiunti'] += len(new)
+            self.stats['entries_added'] += len(new)
 
 
 
 def discover_fn_pointers(tr, secs, tbase, thi, verbose=True):
-    """Funzioni raggiungibili solo via puntatore (tabelle di callback): cerca puntatori a .text
-    nei dati e costanti lui/addiu|ori nel codice. Esclude i target delle tabelle di salto e accetta
-    solo indirizzi che iniziano subito dopo un salto incondizionato (confine di funzione)."""
+    """Functions reachable only through a pointer (callback tables): looks for pointers to .text
+    in the data and lui/addiu|ori constants in the code. Excludes jump table targets and accepts
+    only addresses that start right after an unconditional jump (function boundary)."""
     import struct as _s
     ents = set(tr.entries)
     jt = set()
@@ -371,8 +371,8 @@ def discover_fn_pointers(tr, secs, tbase, thi, verbose=True):
         if b == tbase: continue
         for off in range(0, len(d) - 3, 4):
             v = _s.unpack('>I', d[off:off + 4])[0]
-            if TEXT_LO <= v < thi and v % 4 == 0: cand[('dati', v)] += 1
-    # costanti nel codice: lui rX,hi ; (entro 4 istr) addiu/ori rX,rX,lo
+            if TEXT_LO <= v < thi and v % 4 == 0: cand[('data', v)] += 1
+    # constants in the code: lui rX,hi ; (within 4 instr) addiu/ori rX,rX,lo
     lo_, hi_ = tr.lo, tr.hi
     for pc in range(lo_, hi_ - 4, 4):
         d = tr.dec(pc)
@@ -385,7 +385,7 @@ def discover_fn_pointers(tr, secs, tbase, thi, verbose=True):
             e = tr.dec(q)
             if e['op'] in ('addiu', 'daddiu', 'ori') and e['rs'] == r:
                 v = (hi + (e['imm'] if e['op'] != 'ori' else e['uimm'])) & 0xffffffff
-                if TEXT_LO <= v < thi and v % 4 == 0: cand[('codice', v)] += 1
+                if TEXT_LO <= v < thi and v % 4 == 0: cand[('code', v)] += 1
                 break
             if tr.dest(e) == r: break
     def terminal_before(c):
@@ -394,7 +394,7 @@ def discover_fn_pointers(tr, secs, tbase, thi, verbose=True):
         if q < tr.lo: return False
         x = tr.dec(q)
         if x['op'] in ('jr', 'j') or always_taken(x): return True
-        y = tr.dec(q - 4)           # q e' un delay slot non-nop?
+        y = tr.dec(q - 4)           # is q a non-nop delay slot?
         return y['op'] in ('jr', 'j') or always_taken(y)
     acc, rej_jt, rej_bound = set(), set(), []
     for (src, v), n in cand.items():
@@ -403,8 +403,8 @@ def discover_fn_pointers(tr, secs, tbase, thi, verbose=True):
         if terminal_before(v): acc.add(v)
         else: rej_bound.append((v, src))
     if verbose:
-        print(f'puntatori a funzione: {len({v for _, v in cand})} distinti; gia entry {len({v for _, v in cand if v in ents})}; '
-              f'target di switch esclusi {len(rej_jt)}; NUOVE entry {len(acc)}; scartati (non su un confine) {len(rej_bound)}')
+        print(f'function pointers: {len({v for _, v in cand})} distinct; already entries {len({v for _, v in cand if v in ents})}; '
+              f'switch targets excluded {len(rej_jt)}; NEW entries {len(acc)}; rejected (not on a boundary) {len(rej_bound)}')
     return acc, rej_bound
 
 
@@ -425,9 +425,9 @@ def main():
     ap.add_argument('--funcs', required=True, help='functions.csv')
     ap.add_argument('--out', required=True)
     ap.add_argument('--per-file', type=int, default=60)
-    ap.add_argument('--no-fnptr', action='store_true', help='non cercare puntatori a funzione')
-    ap.add_argument('--only', help='lista di indirizzi hex separati da virgola (+ chiusura dei chiamati)')
-    ap.add_argument('--closure-calls', action='store_true', help='con --only: includi i chiamati (jal)')
+    ap.add_argument('--no-fnptr', action='store_true', help='do not look for function pointers')
+    ap.add_argument('--only', help='comma-separated list of hex addresses (+ closure of the callees)')
+    ap.add_argument('--closure-calls', action='store_true', help='with --only: include the callees (jal)')
     a = ap.parse_args()
 
     e, secs, tbase, tdata = load_elf(a.elf)
@@ -465,16 +465,16 @@ def main():
         todo = list(tr.entries)
 
     os.makedirs(a.out, exist_ok=True)
-    hdr = ['// generato da mips2cpp.py - NON modificare a mano', '#pragma once', '#include "runtime.h"']
+    hdr = ['// generated by mips2cpp.py - do NOT edit by hand', '#pragma once', '#include "runtime.h"']
     for s in todo: hdr.append(f'void {fname(s)}(CPU* c);')
-    # funzioni raggiungibili ma non emesse (solo con --only): dichiarale e risolvile con call_guest
+    # reachable but not emitted functions (only with --only): declare them and resolve them with call_guest
     open(os.path.join(a.out, 'funcs.h'), 'w').write('\n'.join(hdr) + '\n')
 
     files = []
     for k in range(0, len(todo), a.per_file):
         chunk = todo[k:k + a.per_file]
         name = f'gen_{k // a.per_file:03d}.cpp'
-        lines = ['// generato da mips2cpp.py', '#include "funcs.h"',
+        lines = ['// generated by mips2cpp.py', '#include "funcs.h"',
                  '#pragma GCC diagnostic ignored "-Wunused-label"', '']
         for s in chunk: lines += tr.emit_function(s) + ['']
         open(os.path.join(a.out, name), 'w').write('\n'.join(lines))
@@ -487,9 +487,9 @@ def main():
             '  if (lo < sizeof(g_tab) / sizeof(g_tab[0]) && g_tab[lo].a == addr) { g_tab[lo].f(c); return; }',
             '  guest_unimpl(c, addr, 0xdeadc0deu);', '}']
     open(os.path.join(a.out, 'dispatch.cpp'), 'w').write('\n'.join(tab) + '\n')
-    print(f'{len(todo)} funzioni in {len(files)} file; stats: {dict(tr.stats)}')
+    print(f'{len(todo)} functions in {len(files)} files; stats: {dict(tr.stats)}')
     for w in tr.warn[:20]: print('WARN', w)
-    if len(tr.warn) > 20: print('... altri', len(tr.warn) - 20, 'warning')
+    if len(tr.warn) > 20: print('...', len(tr.warn) - 20, 'more warnings')
 
 
 if __name__ == '__main__':

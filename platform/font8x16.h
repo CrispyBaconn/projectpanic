@@ -1,5 +1,5 @@
-// Font bitmap 8x16 generato da DejaVu Sans Mono (licenza Bitstream Vera / DejaVu, ridistribuibile).
-// Un glifo = 16 byte (una riga per byte, bit7 = pixel a sinistra).
+// 8x16 bitmap font generated from DejaVu Sans Mono (Bitstream Vera / DejaVu license, redistributable).
+// One glyph = 16 bytes (one row per byte, bit7 = leftmost pixel).
 #pragma once
 #include <cstdint>
 static const uint32_t FONT_CODES[] = {

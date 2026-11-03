@@ -1,5 +1,5 @@
-// Scheda I/O Namco ASCA-3: H8/3334 (H8/300) che esegue il firmware originale asca-3a.ic14.
-// Mappa e collegamenti da bus/jvs/namcoio.cpp e cpu/h8/h83337.cpp (MAME). license:BSD-3-Clause (derivato da MAME)
+// Namco ASCA-3 I/O board: H8/3334 (H8/300) running the original asca-3a.ic14 firmware.
+// Map and wiring from bus/jvs/namcoio.cpp and cpu/h8/h83337.cpp (MAME). license:BSD-3-Clause (derived from MAME)
 #pragma once
 #include <cstdlib>
 #include "h8cpu.h"
@@ -8,10 +8,10 @@
 #include <functional>
 #include <string>
 
-struct AscaInputs {                          // scritto dal frontend (altro thread), letto dal firmware ASCA
-    volatile uint32_t p1 = 0;                // come la porta JVS_PLAYER1 di MAME (0x20 su, 0x10 giu', 0x02 invio, 0x01 start1, 0x8000 start2 ...)
+struct AscaInputs {                          // written by the frontend (another thread), read by the ASCA firmware
+    volatile uint32_t p1 = 0;                // like MAME's JVS_PLAYER1 port (0x20 up, 0x10 down, 0x02 enter, 0x01 start1, 0x8000 start2 ...)
     volatile uint8_t  system = 0;            // bit7 = test/service
-    volatile uint8_t  coin1 = 0, coin2 = 0;  // bit0 = gettoniera, bit7 = contatore scollegato
+    volatile uint8_t  coin1 = 0, coin2 = 0;  // bit0 = coin slot, bit7 = counter disconnected
     volatile uint16_t analog[8] = {0x8000, 0x8000, 0x8000, 0x8000, 0x8000, 0x8000, 0x8000, 0x8000};
     volatile uint8_t  rotary[2] = {0, 0};
 };
@@ -20,13 +20,13 @@ class AscaSys : public H8Bus {
 public:
     static constexpr double CLOCK = 14745600.0;
     H8oCpu cpu;
-    std::vector<uint8_t> rom;                // 256 KB, visibili i primi 16 KB
+    std::vector<uint8_t> rom;                // 256 KB, first 16 KB visible
     uint8_t ram[0x3f80] = {0};               // 0xC000-0xFF7F
     uint8_t reg[0x80] = {0};                 // 0xFF80-0xFFFF
     AscaInputs* in = nullptr;
     uint8_t dsw = 0x0f;
-    bool sense_initialized = false;          // porta 4 bit 2
-    std::function<void(uint8_t)> on_tx;      // byte inviato sulla SCI0 (verso il bus JVS)
+    bool sense_initialized = false;          // port 4 bit 2
+    std::function<void(uint8_t)> on_tx;      // byte sent on SCI0 (towards the JVS bus)
     std::deque<uint8_t> rxq; int64_t rx_wait = 0;
     uint64_t unmapped_reads = 0, unmapped_writes = 0, tx_bytes = 0, rx_bytes = 0;
 
@@ -34,8 +34,8 @@ public:
     T8 t8[2];
     struct Sci { uint8_t smr = 0, brr = 0xff, scr = 0, tdr = 0xff, ssr = 0x84, rdr = 0; int64_t tx_left = 0; uint8_t tx_byte = 0; bool tdr_full = false; } sci;
     uint8_t adcsr = 0, adcr = 0; int64_t adc_left = 0; uint16_t addr[8] = {0};
-    uint16_t frt = 0; uint64_t frt_acc = 0;     // timer16 a 16 bit (FRT): contatore libero
-    uint8_t pdr[10] = {0}, pddr[10] = {0};   // DR e DDR delle porte 1..9
+    uint16_t frt = 0; uint64_t frt_acc = 0;     // 16-bit timer16 (FRT): free-running counter
+    uint8_t pdr[10] = {0}, pddr[10] = {0};   // DR and DDR of ports 1..9
 
     AscaSys() { hook(); }
     void hook() {
@@ -52,8 +52,8 @@ public:
         frt = 0; frt_acc = 0; memset(pdr, 0, sizeof pdr); memset(pddr, 0, sizeof pddr); rxq.clear(); rx_wait = 0; sense_initialized = false;
         cpu = H8oCpu(); hook(); cpu.do_reset();
     }
-    // in SLEEP senza interrupt pendenti si avanza a blocchi di 64 cicli invece che di 4 (le periferiche vengono
-    // aggiornate lo stesso: al massimo 64 cicli, ~4 us, di ritardo nel risveglio). S23_H8SLOW = come prima.
+    // in SLEEP with no pending interrupts we advance in blocks of 64 cycles instead of 4 (the peripherals are
+    // updated anyway: at most 64 cycles, ~4 us, of wake-up delay). S23_H8SLOW = as before.
     void run_to(uint64_t cycles) {
         static const bool slow = getenv("S23_H8SLOW") != nullptr; if (slow) cpu.rom_code = false;
         while (cpu.m_cycles < cycles) {
@@ -78,7 +78,7 @@ public:
         unmapped_reads++; return 0;
     }
     uint16_t r16(uint32_t a) override {
-        a &= 0xffff; if (!rom.empty() && a < 0x3fff) return (uint16_t)((rom[a] << 8) | rom[a + 1]);        // ROM: via veloce
+        a &= 0xffff; if (!rom.empty() && a < 0x3fff) return (uint16_t)((rom[a] << 8) | rom[a + 1]);        // ROM: fast path
         if (a >= 0xc000 && a < 0xff7f) return (uint16_t)((ram[a - 0xc000] << 8) | ram[a - 0xc000 + 1]);
         return (r8(a) << 8) | r8(a + 1);
     }
@@ -86,13 +86,13 @@ public:
         a &= 0xffff;
         if (a >= 0xc000 && a < 0xff80) { ram[a - 0xc000] = v; return; }
         if (a >= 0xff80) { reg_w(a, v); return; }
-        if (a == 0x6004 || a == 0x6005) return;                         // uscite (lampade, contamonete)
+        if (a == 0x6004 || a == 0x6005) return;                         // outputs (lamps, coin counter)
         if (a < 0x4000) return;                                         // ROM
         unmapped_writes++;
     }
     void w16(uint32_t a, uint16_t v) override { w8(a, v >> 8); w8(a + 1, v & 0xff); }
 
-    // ---------------------------------------------------------------- ingressi memory-mapped (namco_asca_1_device::in_r)
+    // ---------------------------------------------------------------- memory-mapped inputs (namco_asca_1_device::in_r)
     static unsigned bit(uint32_t v, int n) { return (v >> n) & 1; }
     uint8_t in_r(int offset) {
         uint32_t p1 = in ? in->p1 : 0; uint8_t sys = in ? in->system : 0, c1 = in ? in->coin1 : 0, c2 = in ? in->coin2 : 0;
@@ -103,7 +103,7 @@ public:
         return (uint8_t)~((bit(c2, 0) << 3) | (bit(~c2, 7) << 1) | (bit(~c1, 7) << 0));
     }
 
-    // ---------------------------------------------------------------- porte
+    // ---------------------------------------------------------------- ports
     uint8_t port_in(int p) {
         uint32_t p1 = in ? in->p1 : 0;
         switch (p) {
@@ -115,18 +115,18 @@ public:
         }
         return 0xff;
     }
-    int sense_state() { return sense_ext; }                           // 0 = nessuno, 1 = non inizializzato, 2 = inizializzato (letto dalla scheda stessa)
-    int sense_ext = 1;                                                // stato della linea sense visto dall'host (1 = non inizializzato, 2 = inizializzato)
+    int sense_state() { return sense_ext; }                           // 0 = none, 1 = not initialised, 2 = initialised (read from the board itself)
+    int sense_ext = 1;                                                // state of the sense line seen by the host (1 = not initialised, 2 = initialised)
     uint8_t port_read(int p) { uint8_t ddr = pddr[p], dr = pdr[p]; return (ddr & dr) | (~ddr & port_in(p)); }
     void port_write(int p, uint8_t v) {
         pdr[p] = v;
         if (p == 4) { sense_initialized = (v >> 2) & 1; sense_ext = sense_initialized ? 2 : 1; }
     }
-    // numero di porta per l'indirizzo DR/DDR
+    // port number for the DR/DDR address
     static int dr_port(uint32_t a) { switch (a) { case 0xffb2: return 1; case 0xffb3: return 2; case 0xffb6: return 3; case 0xffb7: return 4; case 0xffba: return 5; case 0xffbb: return 6; case 0xffbe: return 7; case 0xffbf: return 8; case 0xffc1: return 9; } return 0; }
     static int ddr_port(uint32_t a) { switch (a) { case 0xffb0: return 1; case 0xffb1: return 2; case 0xffb4: return 3; case 0xffb5: return 4; case 0xffb8: return 5; case 0xffb9: return 6; case 0xffbd: return 8; case 0xffc0: return 9; } return 0; }
 
-    // ---------------------------------------------------------------- registri on-chip
+    // ---------------------------------------------------------------- on-chip registers
     uint8_t reg_r(uint32_t a) {
         flush_tick();
         if (int p = dr_port(a)) return port_read(p);
@@ -159,7 +159,7 @@ public:
         }
         compute_irq();
     }
-    int64_t bytetime() const { return (int64_t)(10.0 * 32.0 * (1 << (2 * (sci.smr & 3))) * (sci.brr + 1)); }   // cicli per 10 bit a B = phi/(32 * 4^n * (N+1))
+    int64_t bytetime() const { return (int64_t)(10.0 * 32.0 * (1 << (2 * (sci.smr & 3))) * (sci.brr + 1)); }   // cycles per 10 bits at B = phi/(32 * 4^n * (N+1))
     void sci_ssr_w(uint8_t v) {
         uint8_t old = sci.ssr; sci.ssr = (old & v & 0xf8) | (old & 0x07);
         if (!(sci.scr & 0x20)) sci.ssr |= 0x84;
@@ -169,7 +169,7 @@ public:
         }
     }
 
-    // ---------------------------------------------------------------- tempo e interrupt
+    // ---------------------------------------------------------------- time and interrupts
     void tick(uint64_t dc) {
         static const int div_tab[2][3] = {{8, 64, 1024}, {8, 64, 1024}};
         bool changed = false;

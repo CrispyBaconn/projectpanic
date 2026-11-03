@@ -1,4 +1,4 @@
-// Harness di test: esegue le funzioni generate su stati iniziali letti da file e scrive i risultati.
+// Test harness: runs the generated functions on initial states read from files and writes the results.
 #include "../runtime.h"
 #include <cstdio>
 #include <cstdlib>

@@ -1,6 +1,6 @@
-; Panic Park (3DS): vertex shader del 3D (platform/pica3d.h). I vertici arrivano gia' in coordinate omogenee
-; (x*w, y*w, z*w, w in pixel dello schermo superiore): basta la proiezione ortogonale ruotata dello schermo.
-; Il colore arriva in byte 0..255 (luce del poligono gia' divisa per 4: il combinatore moltiplica per 4).
+; Panic Park (3DS): 3D vertex shader (platform/pica3d.h). Vertices arrive already in homogeneous coordinates
+; (x*w, y*w, z*w, w in top-screen pixels): the screen's rotated orthographic projection is enough.
+; The colour arrives as bytes 0..255 (polygon light already divided by 4: the combiner multiplies by 4).
 
 .fvec projection[4]
 

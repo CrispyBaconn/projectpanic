@@ -1,41 +1,44 @@
-# Panic Park ricompilato su Nintendo 3DS (New 3DS / New 2DS XL)
+# Recompiled Panic Park on Nintendo 3DS (New 3DS / New 2DS XL)
 
-Il 3D viene disegnato dalla **GPU del 3DS** (PICA200, con citro3d). La PICA200 non ha shader per i pixel, quindi la
-texture a 8 bit con palette del System 23 viene convertita a pezzi (celle da 128x128 texel, con la palette del
-poligono) in una cache di texture sulla GPU; ogni poligono viene ritagliato sulla CPU contro le celle e contro la
-finestra della viewport, e luce, dissolvenze e trasparenza diventano colori dei vertici e stadi del combinatore.
-Il codice e' in `platform/pica3d.h` (indipendente dalla piattaforma) e `platform/platform_3ds.h` (citro3d/citro2d).
+The 3D is drawn by the **3DS GPU** (PICA200, through citro3d). The PICA200 has no pixel shaders, so the
+System 23's 8-bit palettised textures are converted piece by piece (cells of 128x128 texels, with the polygon's
+palette) into a texture cache on the GPU (three 1024x1024 atlases, so neighbouring polygons share draw calls);
+every polygon is clipped on the CPU against the cells and against the viewport window, and lighting, fades and
+transparency become vertex colours and combiner stages.
+The code is in `platform/pica3d.h` (platform-independent) and `platform/platform_3ds.h` (citro3d/citro2d).
 
-- Schermo superiore: il gioco (320x240 al centro), con livello del testo e gamma.
-- Schermo inferiore: menu GIOCA / IMPOSTAZIONI / ESCI; in gioco MONETA e MENU da toccare e le statistiche.
-- Comandi: Circle Pad o croce sx/dx = leva, A = pulsante, START = start 1, Y = start 2, B o SELECT = moneta,
-  croce su/giu' = menu di servizio, L = test, R = DIP di servizio, SELECT+START o MENU = pausa.
-- Core: 0 = disegno, 1 = H8 + audio (80% del core), 2 = gioco (R4650). Audio con ndsp (serve `sdmc:/3ds/dspfirm.cdc`,
-  creato con DSP1; senza, il gioco va lo stesso ma muto).
+- Top screen: the game (320x240 centred), with the text layer and gamma.
+- Bottom screen: PLAY / SETTINGS / EXIT menu; in game, COIN and MENU to tap and the statistics.
+- Controls: Circle Pad or d-pad left/right = lever, A = button, START = start 1, Y = start 2, B or SELECT = coin,
+  d-pad up/down = service menu, L = test, R = service DIP, SELECT+START or MENU = pause.
+- Cores: 0 = drawing, 1 = H8 + audio (80% of the core), 2 = game (R4650). Audio with ndsp (needs `sdmc:/3ds/dspfirm.cdc`,
+  created with DSP1; without it the game still runs, but silent).
 
-## Compilare (WSL con devkitPro)
-    sudo dkp-pacman -S 3ds-dev          (una volta: devkitARM, libctru, citro3d, citro2d, picasso)
-    bash platform/build_all.sh 3ds      (oppure: sh platform/build_3ds.sh)
+## Building (WSL with devkitPro)
+    sudo dkp-pacman -S 3ds-dev          (once: devkitARM, libctru, citro3d, citro2d, picasso)
+    bash platform/build_all.sh 3ds      (or: sh platform/build_3ds.sh)
 
-## Sulla SD
-Copia il contenuto di `dist/3ds/sd/` nella radice della SD. Deve risultare:
+## On the SD card
+Copy the contents of `dist/3ds/sd/` to the root of the SD card. The result must be:
 - `sd:/3ds/panicprk.3dsx`
-- `sd:/3ds/panicprk/` con `panicprk_main.elf`, `main_r4650_BE_4MB.bin`, `panicprkrom/`, `lang/`, `ui/` e **`assets/`**
+- `sd:/3ds/panicprk/` with `panicprk_main.elf`, `main_r4650_BE_4MB.bin`, `panicprkrom/`, `lang/`, `ui/` and **`assets/`**
 
-La cartella `assets/` e' obbligatoria sul 3DS: convertire le ROM sul 3DS non ci sta in memoria. Lo script la copia da
-`dist/windows/assets` o da quella della Switch (stesso formato); se non c'e', avvia una volta la versione PC.
+The `assets/` folder is required on the 3DS: converting the ROMs on the 3DS doesn't fit in memory. The script copies it from
+`dist/windows/assets` or from the Switch one (same format); if it isn't there, run the PC version once.
 
-## Memoria
-Circa 95 MB di heap + 14 MB per la GPU, sui ~124 MB che il New 3DS lascia a un'app homebrew: la data ROM (16 MB)
-resta sulla SD e viene letta a pagine. Sul 3DS vecchio non ci sta.
+## Memory
+The New 3DS gives a homebrew app about 120 MB. The normal heap is capped at 96 MB; everything else becomes
+"linear" memory, used by the GPU (texture atlases, command buffer) and by the asset files that fit there.
+The data ROM (16 MB) and the audio samples stay on the SD card and are read in pages. It doesn't fit on the old 3DS.
+The `MEM` lines in `log.txt` show how the memory was split.
 
-## Prestazioni
-La GPU risolve il disegno, ma il processore principale del gioco (R4650) e l'H8 vanno emulati sui core ARM11 a 804 MHz:
-sulla Wii U il solo R4650 occupa quasi un core da 1,24 GHz, quindi qui il gioco andra' piu' lento del vero.
-Sullo schermo inferiore (opzione "Statistiche") e nel `log.txt` (righe `PERF 3DS`) ci sono i numeri per capire dove.
+## Performance
+The main game CPU (R4650) and the H8 are emulated on the 804 MHz ARM11 cores, so the game may run slower than the real one.
+The bottom screen (option "Statistics") and `log.txt` (`PERF 3DS` lines) show where the time goes:
+gather (text layer), geo (polygon preparation), cells (clipping and texture uploads), submit (GPU commands), GPU and wait.
 
-## Verifiche fatte e non fatte
-- Fatto: il renderer `pica3d.h` e' stato provato su PC con OpenGL a funzioni fisse (stessi combinatori della PICA200,
-  `S23_PICATEST`): stesse immagini del disegno software, a parte il campionamento delle texture lontane.
-- Fatto: tutto il codice compila per ARM11 (armv6k, hard float) contro gli header veri di libctru, citro3d e citro2d.
-- Non fatto: link con devkitARM ed esecuzione su un 3DS vero o su un emulatore.
+## What has and hasn't been verified
+- Done: the `pica3d.h` renderer was tested on PC with fixed-function OpenGL (same combiners as the PICA200,
+  `S23_PICATEST`, `S23_PICAATLAS`): same images as the software renderer, apart from the sampling of distant textures.
+- Done: the code compiles for ARM11 (armv6k, hard float) against the real libctru, citro3d and citro2d headers, and runs on a New 3DS.
+- In progress: performance on the console.

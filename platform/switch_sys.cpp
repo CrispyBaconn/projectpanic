@@ -1,11 +1,11 @@
-// Funzioni specifiche della Switch (libnx), in un file a parte per non mescolare <switch.h> con il resto.
-// Fuori dalla Switch il file e' vuoto (Makefile.wiiu compila tutti i .cpp di platform/).
+// Switch-specific functions (libnx), in a separate file so <switch.h> isn't mixed with the rest.
+// Outside the Switch the file is empty (Makefile.wiiu builds all the .cpp files in platform/).
 #ifdef __SWITCH__
 #include <switch.h>
 #include <ctime>
 #include <cstring>
 
-// ora locale del sistema (newlib su Switch restituisce UTC: il fuso orario lo conosce solo il servizio time)
+// system local time (newlib on Switch returns UTC: only the time service knows the time zone)
 extern "C" bool s23_switch_localtime(struct tm* out) {
     u64 ts = 0; TimeCalendarTime ct; TimeCalendarAdditionalInfo ai;
     if (R_FAILED(timeGetCurrentTime(TimeType_LocalSystemClock, &ts))) return false;
@@ -19,12 +19,12 @@ extern "C" bool s23_switch_localtime(struct tm* out) {
 #endif
 
 #ifdef __SWITCH__
-// thread su un core preciso (0..2). pthread di libnx li metterebbe tutti sul core del processo.
+// thread on a specific core (0..2). libnx's pthread would put them all on the process's core.
 static Thread g_thr[8]; static int g_nthr = 0;
 static void thr_entry(void* a) { ((void* (*)(void*))a)(nullptr); }
 extern "C" bool s23_switch_thread(void* (*fn)(void*), size_t stack, int core, int prio) {
     if (g_nthr >= 8) return false;
-    stack = (stack + 0xfff) & ~(size_t)0xfff;                              // multiplo di 4 KB
+    stack = (stack + 0xfff) & ~(size_t)0xfff;                              // multiple of 4 KB
     Thread* t = &g_thr[g_nthr];
     if (R_FAILED(threadCreate(t, thr_entry, (void*)fn, nullptr, stack, prio, core))) return false;
     if (R_FAILED(threadStart(t))) { threadClose(t); return false; }

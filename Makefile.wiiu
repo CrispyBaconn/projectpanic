@@ -1,15 +1,15 @@
 #-------------------------------------------------------------------------------
-# Panic Park ricompilato -> Wii U (Aroma), file .wuhb
-# Derivato dal template ufficiale di wut (samples/make/helloworld).
+# Recompiled Panic Park -> Wii U (Aroma), .wuhb file
+# Derived from the official wut template (samples/make/helloworld).
 #
-# Requisiti (WSL/Linux con devkitPro):  sudo dkp-pacman -S wiiu-dev wiiu-sdl2
-# Uso (dalla cartella recomp/):         make -f Makefile.wiiu -j$(nproc)
-# Risultato: panicprk.wuhb  -> copialo in sd:/wiiu/apps/panicprk/ insieme ai file del gioco (vedi README_WIIU.md)
+# Requirements (WSL/Linux with devkitPro):  sudo dkp-pacman -S wiiu-dev wiiu-sdl2
+# Usage (from the recomp/ folder):         make -f Makefile.wiiu -j$(nproc)
+# Result: panicprk.wuhb  -> copy it to sd:/wiiu/apps/panicprk/ together with the game files (see README_WIIU.md)
 #-------------------------------------------------------------------------------
 .SUFFIXES:
 
 ifeq ($(strip $(DEVKITPRO)),)
-$(error "Imposta DEVKITPRO: export DEVKITPRO=/opt/devkitpro")
+$(error "Set DEVKITPRO: export DEVKITPRO=/opt/devkitpro")
 endif
 
 TOPDIR ?= $(CURDIR)
@@ -31,12 +31,12 @@ ICON       :=
 TV_SPLASH  :=
 DRC_SPLASH :=
 
-# cartella dell'app sulla SD (ROM, elf, bin, lang/, assets_be/, nvram.bin, panicprk.ini, log.txt)
+# app folder on the SD card (ROMs, elf, bin, lang/, assets_be/, nvram.bin, panicprk.ini, log.txt)
 WIIU_DIR   ?= fs:/vol/external01/wiiu/apps/panicprk
 OPT        ?= -O2
 
 #-------------------------------------------------------------------------------
-# -w: il codice generato ha moltissime label inutilizzate
+# -w: the generated code has lots of unused labels
 CFLAGS   := -w $(OPT) -ffunction-sections $(MACHDEP)
 CFLAGS   += $(INCLUDE) -D__WIIU__ -D__WUT__ -DUSE_SDL -DS23_POLL_TICK -DS23_WIIU_DIR=\"$(WIIU_DIR)\"
 CFLAGS   += -I$(DEVKITPRO)/portlibs/wiiu/include/SDL2

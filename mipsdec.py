@@ -47,7 +47,7 @@ def decode(w):
         d['op'] = {0:'madd',2:'mul'}.get(f, '?')
     else:
         d['op'] = OPS.get(op, '?')
-        if d['op'] == 'lui' and d['rs'] != 0: d['op'] = '?'   # lui richiede rs=0
+        if d['op'] == 'lui' and d['rs'] != 0: d['op'] = '?'   # lui requires rs=0
     return d
 
 BRANCH = {'beq','bne','blez','bgtz','bltz','bgez','beql','bnel','blezl','bgtzl','bltzl','bgezl',
