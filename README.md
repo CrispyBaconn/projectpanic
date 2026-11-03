@@ -9,9 +9,12 @@ Not affiliated with Bandai Namco. License: BSD-3-Clause (parts derived from MAME
 
 ## 1. Generate the code (all platforms)
 
-Put your Panic Park ROMs (the MAME `panicprk` set, unzipped) in a `panicprkrom/` folder inside the project, then:
+You need the Panic Park ROM set **`panicprk.7z`** (not included). Extract it into a `panicprkrom/` folder inside the
+project, so that `panicprkrom/` directly contains the ROM files (`pnp2vera.ic1`, `pnp2vera.ic2`, `pnp1cgll.4m`, ...). Then:
 
 ```sh
+sudo apt install p7zip-full                  # once, to open .7z files
+7z x panicprk.7z -opanicprkrom
 python3 tools/extract_rom.py panicprkrom     # -> panicprk_main.elf + main_r4650_BE_4MB.bin
 pip install pyelftools
 python3 mips2cpp.py --elf panicprk_main.elf --funcs functions.csv --out gen_full
