@@ -269,8 +269,8 @@ static SegWin g_full;
 static void seg_win_save() { if (S.seg == 0 && !S.slant) { g_full.has = true; memcpy(g_full.clip, S.clip_data, sizeof g_full.clip); g_full.sx = S.vp_sx; g_full.sy = S.vp_sy; g_full.ox = S.vp_ox; g_full.oy = S.vp_oy; g_full.slant = false; }
     seg_win_save2(); }
 static void seg_win_save2() { if (seg_win_off || S.seg < 0 || S.seg >= 32) return; SegWin& w = seg_pend; seg_pend_k = S.seg; seg_pend_used = false; w.has = true; memcpy(w.clip, S.clip_data, sizeof w.clip); w.sx = S.vp_sx; w.sy = S.vp_sy; w.ox = S.vp_ox; w.oy = S.vp_oy; w.slant = S.slant; }
-// A remembered window is valid as long as its segment exists in every frame: if a frame has fewer segments
-// (screen change) older ones are forgotten, so a stale window from another screen doesn't come back.
+// A remembered window is valid as long as the frames keep the same number of segments: when the count changes
+// (screen change) they are all forgotten, so a stale window from another screen doesn't come back.
 // At the start of the frame (segment 0) the current state stays, as before.
 // Window of the tutorial mini-screen (RULE/NEEDED/LIFE) with a still camera. The game recomputes it and sends it
 // only in the frames where the camera moves towards the monitor, and (with this version's timing, but also in
@@ -474,7 +474,12 @@ static inline void mark_vbl() { cut = cur_list.size(); }         // called by th
 
 static std::vector<Entry> latest;                                 // last complete list (between two 0x4001)
 static void frame_begin() {                                       // the game opens every frame with command 0x4001: the previous list is complete
-    n_fb++; seg_win_commit(); for (int k = S.seg + 1; k < 32; k++) seg_win[k].has = false; seg_win_prev_max = S.seg; S.seg = 0; MtxGuard lk(mtx);
+    n_fb++; seg_win_commit();
+    // a different number of segments means a different screen: the remembered windows belong to the old one. (Before,
+    // only a smaller count cleared them: in BALLOON PANIC the level has one segment more than the RULE/LIFE screen before
+    // it, and the window remembered there for segment 1 (fov 555 instead of 320) zoomed the whole level in.)
+    if (S.seg != seg_win_prev_max) for (int k = 0; k < 32; k++) seg_win[k].has = false;
+    seg_win_prev_max = S.seg; S.seg = 0; MtxGuard lk(mtx);
     if (!cur_list.empty()) { latest.swap(cur_list); cur_list.clear(); have_latest = true; }
 }
 static void vblank() {
