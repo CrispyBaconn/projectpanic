@@ -66,6 +66,24 @@ TXT = {
 
 def have(cmd): return shutil.which(cmd) is not None
 
+def system_lang():
+    """'it' when the system (Windows display language, or the Linux locale) is Italian, otherwise 'en'."""
+    try:
+        if WIN:
+            import ctypes
+            return 'it' if ctypes.windll.kernel32.GetUserDefaultUILanguage() & 0x3ff == 0x10 else 'en'   # LANG_ITALIAN
+        try:                                                  # WSL: the language of Windows itself
+            if 'microsoft' in open('/proc/version').read().lower() and have('powershell.exe'):
+                r = subprocess.run(['powershell.exe', '-NoProfile', '-Command', '(Get-UICulture).Name'],
+                                   capture_output=True, text=True, timeout=8)
+                if r.returncode == 0 and r.stdout.strip(): return 'it' if r.stdout.strip().lower().startswith('it') else 'en'
+        except Exception: pass
+        for k in ('LC_ALL', 'LC_MESSAGES', 'LANGUAGE', 'LANG'):
+            v = os.environ.get(k, '')
+            if v and v not in ('C', 'POSIX') and not v.startswith('C.'): return 'it' if v.lower().startswith('it') else 'en'
+    except Exception: pass
+    return 'en'
+
 def win_cxx():
     """Native Windows C++ compiler: LLVM-MinGW downloaded into tools/, else a MinGW g++ (e.g. MSYS2) in PATH."""
     for d in sorted(glob.glob(os.path.join(ROOT, 'tools', 'llvm-mingw-*', 'bin')), reverse=True):
@@ -392,7 +410,7 @@ class App:
         self.root = root; self.q = queue.Queue(); self.worker = None; self.status = None
         try: self.cfg = json.load(open(CFG))
         except Exception: self.cfg = {}
-        self.lang = self.cfg.get('lang', 'en')                       # English unless the user picked Italian
+        self.lang = self.cfg.get('lang') or system_lang()          # the system's language; the button's choice is remembered
         root.configure(bg=BG); root.minsize(640, 0)
         st = ttk.Style(root); st.theme_use('clam')
         st.configure('P.Horizontal.TProgressbar', troughcolor='#0a1f45', background=YEL, bordercolor=BG,
