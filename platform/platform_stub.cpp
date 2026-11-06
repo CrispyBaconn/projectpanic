@@ -1558,6 +1558,16 @@ int main(int argc, char** argv) {
         g_win = SDL_CreateWindow("Panic Park - recompiled", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, getenv("S23_WIN_W") ? atoi(getenv("S23_WIN_W")) : 960, getenv("S23_WIN_H") ? atoi(getenv("S23_WIN_H")) : 720, SDL_WINDOW_RESIZABLE | (g_is.cfg.fullscreen ? SDL_WINDOW_FULLSCREEN_DESKTOP : 0));
 #endif
         if (!g_win) { fprintf(stderr, "SDL_CreateWindow: %s\n", SDL_GetError()); return 5; }
+#ifndef S23_CONSOLE
+        {   // window / taskbar icon: ui/icon.png next to the program (optional, your own picture)
+            int iw, ih, in_; unsigned char* px = stbi_load((ui_dir() + "/icon.png").c_str(), &iw, &ih, &in_, 4);
+            if (px) {
+                SDL_Surface* ic = SDL_CreateRGBSurfaceWithFormatFrom(px, iw, ih, 32, iw * 4, SDL_PIXELFORMAT_RGBA32);
+                if (ic) { SDL_SetWindowIcon(g_win, ic); SDL_FreeSurface(ic); }
+                stbi_image_free(px);
+            }
+        }
+#endif
         { const char* ge = getenv("S23_GL"); g_gpu = ge ? atoi(ge) != 0 : g_is.cfg.gpu != 0; }
         if (g_gpu && !getenv("SDL_RENDER_DRIVER")) {                                         // 3D on GPU uses the OpenGL context of SDL's renderer
 #if defined(__ANDROID__) || defined(__SWITCH__)

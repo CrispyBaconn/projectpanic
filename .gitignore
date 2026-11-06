@@ -35,3 +35,5 @@ panicprkrom/
 .rom_extract/
 tools/llvm-mingw-*/
 !docs/*.png
+build_icons/
+switch/icon.jpg

@@ -5,6 +5,7 @@
 # Variables: OPT (default -O2), JOBS (parallel compilations, default = number of cores)
 set -e
 cd "$(dirname "$0")/.."
+python3 tools/make_icons.py || true                  # app icons from platform/ui/icon.png (if you have it)
 CXX=${CXX:-x86_64-w64-mingw32-g++-posix}
 command -v $CXX >/dev/null 2>&1 || CXX=x86_64-w64-mingw32-g++
 command -v $CXX >/dev/null 2>&1 || { echo "MinGW-w64 missing: sudo apt install g++-mingw-w64-x86-64-posix"; exit 1; }
@@ -25,6 +26,11 @@ ls gen_full/gen_*.cpp gen_full/dispatch.cpp | while read f; do
   echo "$f"
 done | xargs -r -P "$JOBS" -I{} sh -c 'f={}; o='"$BD"'/$(basename $f .cpp).o; echo "  $f"; '"$CXX"' -std=c++17 '"$OPT"' -w -I. -Igen_full -c $f -o $o'
 $CXX -std=c++17 -O2 -w -I. -Igen_full -DUSE_SDL -I$SDLD/include/SDL2 -c platform/platform_stub.cpp -o $BD/platform_stub.o
+# executable icon (build_icons/icon.ico, made by tools/make_icons.py)
+WINDRES=${WINDRES:-x86_64-w64-mingw32-windres}
+if [ -f build_icons/icon.ico ] && command -v $WINDRES >/dev/null 2>&1; then
+  echo '1 ICON "build_icons/icon.ico"' > $BD/icon.rc && $WINDRES $BD/icon.rc -O coff -o $BD/icon_res.o
+else rm -f $BD/icon_res.o; fi
 $CXX $BD/*.o -o $OUT/PanicPark.exe -mconsole -static -static-libgcc -static-libstdc++ \
   -L$SDLD/lib -Wl,-Bstatic -lSDL2 -lwinpthread \
   -lsetupapi -lwinmm -limm32 -lversion -lole32 -loleaut32 -lgdi32 -luser32 -lshell32 -lcfgmgr32 -luuid -ladvapi32

@@ -253,6 +253,17 @@ class Worker(threading.Thread):
         self.log('  platform/platform_stub.cpp' + ('\n' + o.rstrip() if o.strip() else ''))
         if rc: self.last = next((l for l in o.splitlines() if 'error' in l), 'platform_stub.cpp'); return False
         self.q.put(('pct', step, 0.97))
+        res = os.path.join(bd, 'icon_res.o')                 # executable icon (build_icons/icon.ico)
+        if os.path.isfile(res): os.remove(res)
+        ico = os.path.join(ROOT, 'build_icons', 'icon.ico')
+        wr = next((w for w in (os.path.join(os.path.dirname(cxx), n) for n in
+                   ('x86_64-w64-mingw32-windres.exe', 'llvm-windres.exe', 'windres.exe', 'x86_64-w64-mingw32-windres', 'windres'))
+                   if os.path.isfile(w)), None) or shutil.which('windres') or shutil.which('x86_64-w64-mingw32-windres')
+        if os.path.isfile(ico) and wr:
+            open(os.path.join(bd, 'icon.rc'), 'w').write('1 ICON "build_icons/icon.ico"\n')
+            rc, o = self.compile([wr, os.path.join(bd, 'icon.rc'), '-O', 'coff', '-o', res])
+            self.log('icon: ' + ('ok' if rc == 0 else o.strip()))
+            if rc and os.path.isfile(res): os.remove(res)
         objs = sorted(glob.glob(os.path.join(bd, '*.o')))
         link = [cxx] + objs + ['-o', os.path.join(out, 'PanicPark.exe'), '-mconsole', '-static'] + \
                ([] if clang else ['-static-libgcc', '-static-libstdc++']) + \
@@ -329,6 +340,9 @@ class Worker(threading.Thread):
                         if not self.pip(i, 'elftools', 'pyelftools'): raise RuntimeError(self.t['no_elftools'])
                         ok = self.run_cmd([sys.executable, 'mips2cpp.py', '--elf', 'panicprk_main.elf',
                                            '--funcs', 'functions.csv', '--out', 'gen_full'], i) == 0
+                        if ok and os.path.isfile(os.path.join(ROOT, 'platform', 'ui', 'icon.png')):
+                            # app icons for every device from platform/ui/icon.png (needs Pillow)
+                            if self.pip(i, 'PIL', 'pillow'): self.run_cmd([sys.executable, 'tools/make_icons.py'], i)
                     else:
                         script = next(d[2] for d in DEVICES if d[0] == key)
                         nsrc = len([f for f in os.listdir(os.path.join(ROOT, 'gen_full')) if f.endswith('.cpp')]) + 1
@@ -374,6 +388,9 @@ class App:
                      lightcolor=YEL, darkcolor=ORA, thickness=26)
         st.configure('S.Horizontal.TProgressbar', troughcolor='#0a1f45', background=GRN, bordercolor=PANEL,
                      lightcolor=GRN, darkcolor=GRN, thickness=8)
+        try:                                                 # window icon: your platform/ui/icon.png, if you have it
+            self.icon = tk.PhotoImage(file=os.path.join(ROOT, 'platform', 'ui', 'icon.png')); root.iconphoto(True, self.icon)
+        except Exception: pass
         self.build_ui(); self.refresh_texts(); self.poll()
         root.protocol('WM_DELETE_WINDOW', self.on_close)
 

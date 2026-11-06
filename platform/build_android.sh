@@ -10,6 +10,7 @@
 # Variables: ANDROID_HOME (default ~/android-sdk), ABIS (default arm64-v8a; e.g. "arm64-v8a armeabi-v7a")
 set -e
 cd "$(dirname "$0")/.."
+python3 tools/make_icons.py || true                  # app icons from platform/ui/icon.png (if you have it)
 SRC=$(pwd)
 : "${ANDROID_HOME:=$HOME/android-sdk}"; export ANDROID_HOME ANDROID_SDK_ROOT=$ANDROID_HOME
 NDK_VER=27.2.12479018
@@ -51,6 +52,10 @@ fi
 rm -rf "$PROJ/app/jni/SDL"; ln -s "$SRC/platform/SDL2-src" "$PROJ/app/jni/SDL"
 echo "sdk.dir=$ANDROID_HOME" > "$PROJ/local.properties"
 
+# launcher icon (build_icons/android, made by tools/make_icons.py)
+if [ -d build_icons/android ]; then
+  for d in build_icons/android/mipmap-*; do mkdir -p "$PROJ/app/src/main/res/$(basename $d)" && cp $d/ic_launcher.png "$PROJ/app/src/main/res/$(basename $d)/"; done
+fi
 # app/build.gradle: app identifier, ABI, NDK
 G="$PROJ/app/build.gradle"
 grep -q "applicationId" "$G" || sed -i "s/minSdkVersion 21/applicationId \"$APPID\"\n        minSdkVersion 21/" "$G"

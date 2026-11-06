@@ -5,6 +5,7 @@
 # Variables: JOBS (parallel compilations, default = number of cores), OPT (default -O2)
 set -e
 cd "$(dirname "$0")/.."
+python3 tools/make_icons.py || true                  # app icons from platform/ui/icon.png (if you have it)
 : "${DEVKITPRO:=/opt/devkitpro}"; export DEVKITPRO
 export DEVKITA64="${DEVKITA64:-$DEVKITPRO/devkitA64}"
 [ -f "$DEVKITPRO/libnx/switch_rules" ] || { echo "libnx missing: sudo dkp-pacman -S switch-dev switch-sdl2"; exit 1; }

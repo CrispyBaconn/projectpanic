@@ -30,6 +30,11 @@ Devices whose tools are missing are greyed out, with what to install. If a build
 "Show details" opens the full log. The results end up in `dist/`; "Open the dist folder" opens it.
 The window is in English; the button at the top right switches to Italian.
 
+Optional: put your own square picture in `platform/ui/icon.png` and it becomes the icon everywhere: the Windows
+executable, the game and builder windows, Android, Switch, Wii U and 3DS (`tools/make_icons.py`, run by the builds,
+makes every size; it needs Pillow, which the builder installs by itself). Like the menu logo and background, the icon
+is not part of the repository.
+
 ## Manual build
 
 ### 1. Generate the code (all platforms)

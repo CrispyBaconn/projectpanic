@@ -5,6 +5,7 @@
 # Variables: JOBS (parallel compilations, default = number of cores), OPT (default -O2)
 set -e
 cd "$(dirname "$0")/.."
+python3 tools/make_icons.py || true                  # app icons from platform/ui/icon.png (if you have it)
 : "${DEVKITPRO:=/opt/devkitpro}"; export DEVKITPRO
 export DEVKITARM="${DEVKITARM:-$DEVKITPRO/devkitARM}"
 [ -f "$DEVKITARM/3ds_rules" ] || { echo "devkitARM missing: sudo dkp-pacman -S 3ds-dev"; exit 1; }

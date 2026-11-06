@@ -5,6 +5,7 @@
 # Variables: JOBS (parallel compilations, default = number of cores), OPT (default -O2)
 set -e
 cd "$(dirname "$0")/.."
+python3 tools/make_icons.py || true                  # app icons from platform/ui/icon.png (if you have it)
 : "${DEVKITPRO:=/opt/devkitpro}"; export DEVKITPRO
 export DEVKITPPC="${DEVKITPPC:-$DEVKITPRO/devkitPPC}"
 [ -f "$DEVKITPRO/wut/share/wut_rules" ] || { echo "wut missing: sudo dkp-pacman -S wiiu-dev wiiu-sdl2"; exit 1; }
