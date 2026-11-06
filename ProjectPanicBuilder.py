@@ -24,10 +24,20 @@ ROOT = os.path.dirname(os.path.abspath(__file__))
 CFG = os.path.join(os.path.expanduser('~'), '.projectpanic_builder.json')
 WIN = os.name == 'nt'
 FONT, MONO = ('Segoe UI', 'Consolas') if WIN else ('DejaVu Sans', 'DejaVu Sans Mono')
-# devkitPro: /opt/devkitpro on Linux/WSL; on Windows its installer puts it (with its own MSYS2 bash) in C:\devkitPro
-DKP = os.environ.get('DEVKITPRO_WIN', r'C:\devkitPro') if WIN else os.environ.get('DEVKITPRO', '/opt/devkitpro')
+# devkitPro: /opt/devkitpro on Linux; on Windows its installer puts it (with its own MSYS2 bash) in C:\devkitPro.
+# The Windows one is used also when the builder runs in WSL or in an MSYS2 Python (/mnt/c/devkitPro, /c/devkitPro).
+def find_dkp():
+    env = [os.environ.get(k, '') for k in ('DEVKITPRO_WIN', 'DEVKITPRO')]
+    if WIN: cands = [e for e in env if re.match(r'^[A-Za-z]:', e)] + [r'C:\devkitPro', r'D:\devkitPro']
+    else: cands = [e for e in env if e.startswith('/')] + ['/opt/devkitpro', '/mnt/c/devkitPro', '/c/devkitPro',
+                                                         '/cygdrive/c/devkitPro', '/mnt/d/devkitPro', '/d/devkitPro']
+    for c in cands:
+        if any(os.path.isdir(os.path.join(c, d)) for d in ('devkitARM', 'devkitA64', 'devkitPPC')): return c
+    return cands[0] if WIN or not cands else '/opt/devkitpro'
+DKP = find_dkp()
 DKP_BASH = os.path.join(DKP, 'msys2', 'usr', 'bin', 'bash.exe')
 DKP_MAKE = os.path.join(DKP, 'msys2', 'usr', 'bin', 'make.exe')
+DKP_WIN = os.path.isfile(DKP_BASH)                   # the Windows devkitPro: its bash runs the scripts
 SDLV = '2.30.9'
 LLVM_MINGW_PIN = '20240619'          # used if GitHub's "latest release" lookup fails
 ROM_KEY = ('pnp2vera.ic1', 'pnp2vera.ic2')               # the two halves of the main program ROM
@@ -47,7 +57,8 @@ TXT = {
             stopped='Stopped.', open='Open the dist folder', a_setup='first time: downloads Java and the Android SDK (~3 GB)', a_studio='uses Android Studio (its Java and SDK)', a_add='adds the missing SDK parts', a_ready='SDK already installed',
             n3ds='needs the assets folder made by the PC version: build Windows or Linux too and start the game once',
             confirm_stop='Stop the build?', reuse='already extracted: using panicprkrom/', no_file='file not found', recheck='Check again', w_dl='first time: downloads the compiler (LLVM-MinGW, ~150 MB)',
-            no_elftools='pyelftools is missing:  sudo apt install python3-pyelftools'),
+            no_elftools='pyelftools is missing:  sudo apt install python3-pyelftools',
+            dkp_inst='Install the missing devkitPro packages', dkp_busy='installing the devkitPro packages…', dkp_fail='Installation failed: open "Show details".'),
  'it': dict(title='Project Panic Builder', sub='Compila Panic Park per i tuoi dispositivi',
             s1='1  ROM', s1h='Scegli il tuo archivio panicprk (.zip o .7z)', browse='Sfoglia…',
             s2='2  Dispositivi', s2h='Spunta i dispositivi (in grigio: prima installa lo strumento indicato)', s3='3  Compila', go='COMPILA', stop='Ferma',
@@ -61,7 +72,8 @@ TXT = {
             stopped='Fermato.', open='Apri la cartella dist', a_setup='la prima volta scarica Java e l’SDK Android (~3 GB)', a_studio='usa Android Studio (il suo Java e il suo SDK)', a_add='aggiunge le parti mancanti dell’SDK', a_ready='SDK già installato',
             n3ds='serve la cartella assets creata dalla versione PC: compila anche Windows o Linux e avvia il gioco una volta',
             confirm_stop='Fermare la compilazione?', reuse='già estratte: uso panicprkrom/', no_file='file non trovato', recheck='Ricontrolla', w_dl='la prima volta scarica il compilatore (LLVM-MinGW, ~150 MB)',
-            no_elftools='manca pyelftools:  sudo apt install python3-pyelftools'),
+            no_elftools='manca pyelftools:  sudo apt install python3-pyelftools',
+            dkp_inst='Installa i pacchetti devkitPro mancanti', dkp_busy='installo i pacchetti devkitPro…', dkp_fail='Installazione non riuscita: apri "Mostra dettagli".'),
  'de': dict(title='Project Panic Builder', sub='Panic Park für deine Geräte kompilieren',
             s1='1  ROM-Set', s1h='Wähle dein panicprk-Archiv (.zip oder .7z)', browse='Durchsuchen…',
             s2='2  Geräte', s2h='Hake die Geräte an (ausgegraut: erst das angezeigte Werkzeug installieren)', s3='3  Kompilieren', go='KOMPILIEREN', stop='Stopp',
@@ -75,7 +87,8 @@ TXT = {
             stopped='Gestoppt.', open='Ordner dist öffnen', a_setup='beim ersten Mal werden Java und das Android-SDK geladen (~3 GB)', a_studio='nutzt Android Studio (dessen Java und SDK)', a_add='ergänzt die fehlenden SDK-Teile', a_ready='SDK schon installiert',
             n3ds='braucht den Ordner assets der PC-Version: kompiliere auch Windows oder Linux und starte das Spiel einmal',
             confirm_stop='Kompilieren abbrechen?', reuse='schon entpackt: nutze panicprkrom/', no_file='Datei nicht gefunden', recheck='Erneut prüfen', w_dl='beim ersten Mal wird der Compiler geladen (LLVM-MinGW, ~150 MB)',
-            no_elftools='pyelftools fehlt:  sudo apt install python3-pyelftools'),
+            no_elftools='pyelftools fehlt:  sudo apt install python3-pyelftools',
+            dkp_inst='Fehlende devkitPro-Pakete installieren', dkp_busy='devkitPro-Pakete werden installiert…', dkp_fail='Installation fehlgeschlagen: öffne „Details anzeigen“.'),
  'fr': dict(title='Project Panic Builder', sub='Compile Panic Park pour tes appareils',
             s1='1  ROM', s1h='Choisis ton archive panicprk (.zip ou .7z)', browse='Parcourir…',
             s2='2  Appareils', s2h='Coche les appareils (grisés : installe d’abord l’outil indiqué)', s3='3  Compiler', go='COMPILER', stop='Arrêter',
@@ -89,7 +102,8 @@ TXT = {
             stopped='Arrêté.', open='Ouvrir le dossier dist', a_setup='la première fois, télécharge Java et le SDK Android (~3 Go)', a_studio='utilise Android Studio (son Java et son SDK)', a_add='ajoute les parties manquantes du SDK', a_ready='SDK déjà installé',
             n3ds='il faut le dossier assets créé par la version PC : compile aussi Windows ou Linux et lance le jeu une fois',
             confirm_stop='Arrêter la compilation ?', reuse='déjà extraites : j’utilise panicprkrom/', no_file='fichier introuvable', recheck='Revérifier', w_dl='la première fois, télécharge le compilateur (LLVM-MinGW, ~150 Mo)',
-            no_elftools='pyelftools manque :  sudo apt install python3-pyelftools'),
+            no_elftools='pyelftools manque :  sudo apt install python3-pyelftools',
+            dkp_inst='Installer les paquets devkitPro manquants', dkp_busy='installation des paquets devkitPro…', dkp_fail='Échec de l’installation : ouvre « Afficher les détails ».'),
  'es': dict(title='Project Panic Builder', sub='Compila Panic Park para tus dispositivos',
             s1='1  ROM', s1h='Elige tu archivo panicprk (.zip o .7z)', browse='Examinar…',
             s2='2  Dispositivos', s2h='Marca los dispositivos (en gris: instala primero la herramienta indicada)', s3='3  Compilar', go='COMPILAR', stop='Detener',
@@ -103,7 +117,8 @@ TXT = {
             stopped='Detenido.', open='Abrir la carpeta dist', a_setup='la primera vez descarga Java y el SDK de Android (~3 GB)', a_studio='usa Android Studio (su Java y su SDK)', a_add='añade las partes que faltan del SDK', a_ready='SDK ya instalado',
             n3ds='necesita la carpeta assets creada por la versión de PC: compila también Windows o Linux y abre el juego una vez',
             confirm_stop='¿Detener la compilación?', reuse='ya extraídas: uso panicprkrom/', no_file='archivo no encontrado', recheck='Comprobar de nuevo', w_dl='la primera vez descarga el compilador (LLVM-MinGW, ~150 MB)',
-            no_elftools='falta pyelftools:  sudo apt install python3-pyelftools'),
+            no_elftools='falta pyelftools:  sudo apt install python3-pyelftools',
+            dkp_inst='Instalar los paquetes de devkitPro que faltan', dkp_busy='instalando los paquetes de devkitPro…', dkp_fail='La instalación falló: abre «Ver detalles».'),
  'pt': dict(title='Project Panic Builder', sub='Compile Panic Park para os seus dispositivos',
             s1='1  ROM', s1h='Escolha o seu arquivo panicprk (.zip ou .7z)', browse='Procurar…',
             s2='2  Dispositivos', s2h='Marque os dispositivos (em cinza: instale antes a ferramenta indicada)', s3='3  Compilar', go='COMPILAR', stop='Parar',
@@ -117,7 +132,8 @@ TXT = {
             stopped='Parado.', open='Abrir a pasta dist', a_setup='na primeira vez baixa o Java e o SDK do Android (~3 GB)', a_studio='usa o Android Studio (o Java e o SDK dele)', a_add='adiciona as partes que faltam do SDK', a_ready='SDK já instalado',
             n3ds='precisa da pasta assets criada pela versão de PC: compile também Windows ou Linux e abra o jogo uma vez',
             confirm_stop='Parar a compilação?', reuse='já extraídas: usando panicprkrom/', no_file='arquivo não encontrado', recheck='Verificar de novo', w_dl='na primeira vez baixa o compilador (LLVM-MinGW, ~150 MB)',
-            no_elftools='falta o pyelftools:  sudo apt install python3-pyelftools'),
+            no_elftools='falta o pyelftools:  sudo apt install python3-pyelftools',
+            dkp_inst='Instalar os pacotes do devkitPro que faltam', dkp_busy='instalando os pacotes do devkitPro…', dkp_fail='A instalação falhou: abra "Mostrar detalhes".'),
  'ru': dict(title='Project Panic Builder', sub='Сборка Panic Park для ваших устройств',
             s1='1  ROM', s1h='Выберите архив panicprk (.zip или .7z)', browse='Обзор…',
             s2='2  Устройства', s2h='Отметьте устройства (серые: сначала установите указанный инструмент)', s3='3  Сборка', go='СОБРАТЬ', stop='Стоп',
@@ -131,7 +147,8 @@ TXT = {
             stopped='Остановлено.', open='Открыть папку dist', a_setup='в первый раз скачивает Java и Android SDK (~3 ГБ)', a_studio='использует Android Studio (его Java и SDK)', a_add='докачивает недостающие части SDK', a_ready='SDK уже установлен',
             n3ds='нужна папка assets, которую создаёт версия для ПК: соберите также Windows или Linux и запустите игру один раз',
             confirm_stop='Остановить сборку?', reuse='уже распакованы: используется panicprkrom/', no_file='файл не найден', recheck='Проверить снова', w_dl='в первый раз скачивает компилятор (LLVM-MinGW, ~150 МБ)',
-            no_elftools='нет pyelftools:  sudo apt install python3-pyelftools'),
+            no_elftools='нет pyelftools:  sudo apt install python3-pyelftools',
+            dkp_inst='Установить недостающие пакеты devkitPro', dkp_busy='устанавливаю пакеты devkitPro…', dkp_fail='Установка не удалась: откройте «Показать подробности».'),
  'ja': dict(title='Project Panic Builder', sub='Panic Park をお使いの機器向けにビルド',
             s1='1  ROM セット', s1h='panicprk のアーカイブ (.zip または .7z) を選んでください', browse='参照…',
             s2='2  機器', s2h='ビルドする機器にチェック (灰色: 先に表示されたツールをインストール)', s3='3  ビルド', go='ビルド', stop='停止',
@@ -145,7 +162,8 @@ TXT = {
             stopped='停止しました。', open='dist フォルダーを開く', a_setup='初回は Java と Android SDK をダウンロード (~3 GB)', a_studio='Android Studio (その Java と SDK) を使用', a_add='足りない SDK の部品を追加', a_ready='SDK はインストール済み',
             n3ds='PC 版が作る assets フォルダーが必要: Windows か Linux もビルドして、ゲームを一度起動してください',
             confirm_stop='ビルドを停止しますか?', reuse='展開済み: panicprkrom/ を使用', no_file='ファイルが見つかりません', recheck='再確認', w_dl='初回はコンパイラーをダウンロード (LLVM-MinGW, ~150 MB)',
-            no_elftools='pyelftools がありません:  sudo apt install python3-pyelftools'),
+            no_elftools='pyelftools がありません:  sudo apt install python3-pyelftools',
+            dkp_inst='足りない devkitPro パッケージをインストール', dkp_busy='devkitPro パッケージをインストール中…', dkp_fail='インストールに失敗しました: 「詳細を表示」を開いてください。'),
  'zh': dict(title='Project Panic Builder', sub='为你的设备编译 Panic Park',
             s1='1  ROM', s1h='选择你的 panicprk 压缩包 (.zip 或 .7z)', browse='浏览…',
             s2='2  设备', s2h='勾选要编译的设备 (灰色: 请先安装提示的工具)', s3='3  编译', go='编译', stop='停止',
@@ -159,7 +177,8 @@ TXT = {
             stopped='已停止。', open='打开 dist 文件夹', a_setup='首次会下载 Java 和 Android SDK (~3 GB)', a_studio='使用 Android Studio (它的 Java 和 SDK)', a_add='补充缺少的 SDK 组件', a_ready='SDK 已安装',
             n3ds='需要 PC 版生成的 assets 文件夹: 请同时编译 Windows 或 Linux 并运行一次游戏',
             confirm_stop='停止编译?', reuse='已解压: 使用 panicprkrom/', no_file='找不到文件', recheck='重新检查', w_dl='首次会下载编译器 (LLVM-MinGW, ~150 MB)',
-            no_elftools='缺少 pyelftools:  sudo apt install python3-pyelftools'),
+            no_elftools='缺少 pyelftools:  sudo apt install python3-pyelftools',
+            dkp_inst='安装缺少的 devkitPro 软件包', dkp_busy='正在安装 devkitPro 软件包…', dkp_fail='安装失败: 请打开“显示详情”。'),
 }
 LANGS = [('en', 'English'), ('it', 'Italiano'), ('de', 'Deutsch'), ('fr', 'Français'), ('es', 'Español'),
          ('pt', 'Português'), ('ru', 'Русский'), ('ja', '日本語'), ('zh', '简体中文')]
@@ -218,9 +237,20 @@ def find_7z():
         if d and os.path.isfile(os.path.join(d, '7-Zip', '7z.exe')): return os.path.join(d, '7-Zip', '7z.exe')
     return None
 
-def msys_path(p):                    # C:\a\b -> /c/a/b (for the devkitPro bash)
+def msys_path(p):                    # C:\a\b (or WSL /mnt/c/a/b) -> /c/a/b (for the devkitPro bash)
     p = os.path.abspath(p).replace('\\', '/')
-    return '/' + p[0].lower() + p[2:] if re.match(r'^[A-Za-z]:', p) else p
+    if re.match(r'^[A-Za-z]:', p): return '/' + p[0].lower() + p[2:]
+    m = re.match(r'^/mnt/([a-z])(/.*)?$', p)
+    return '/' + m.group(1) + (m.group(2) or '') if m else p
+
+def dkp_check(files, pkgs):
+    """None if devkitPro has the files, otherwise what to install (missing packages, or devkitPro itself)."""
+    if not os.path.isdir(DKP) or not any(os.path.isdir(os.path.join(DKP, d)) for d in ('devkitARM', 'devkitA64', 'devkitPPC')):
+        return 'devkitPro (devkitpro.org/wiki/Getting_Started) + ' + ' '.join(pkgs)
+    if all(os.path.isfile(os.path.join(DKP, f)) for f in files) and (DKP_WIN or not WIN): return None
+    if DKP_WIN: return 'devkitPro: ' + ' '.join(pkgs)
+    return 'sudo dkp-pacman -S ' + ' '.join(pkgs)
+DKP_PKGS = {'switch': ['switch-dev', 'switch-sdl2'], 'wiiu': ['wiiu-dev', 'wiiu-sdl2'], '3ds': ['3ds-dev']}
 
 # device: (label, build script, check -> missing-tool hint or None, extra note)
 def chk_windows():
@@ -231,18 +261,9 @@ def chk_linux():
     return None if have('g++') and have('sdl2-config') else 'sudo apt install g++ libsdl2-dev'
 def chk_android():
     return None                                           # tools/build_android.py downloads Java and the SDK itself
-def chk_switch():
-    ok = os.path.isfile(f'{DKP}/libnx/switch_rules') and os.path.isfile(f'{DKP}/portlibs/switch/lib/libSDL2.a')
-    if WIN: return None if ok and os.path.isfile(DKP_BASH) and os.path.isfile(DKP_MAKE) else 'devkitPro (devkitpro.org/wiki/Getting_Started) + switch-dev, switch-sdl2'
-    return None if ok else 'devkitPro + sudo dkp-pacman -S switch-dev switch-sdl2'
-def chk_wiiu():
-    ok = os.path.isfile(f'{DKP}/wut/share/wut_rules') and os.path.isfile(f'{DKP}/portlibs/wiiu/lib/libSDL2.a')
-    if WIN: return None if ok and os.path.isfile(DKP_BASH) and os.path.isfile(DKP_MAKE) else 'devkitPro (devkitpro.org/wiki/Getting_Started) + wiiu-dev, wiiu-sdl2'
-    return None if ok else 'devkitPro + sudo dkp-pacman -S wiiu-dev wiiu-sdl2'
-def chk_3ds():
-    ok = os.path.isfile(f'{DKP}/devkitARM/3ds_rules') and os.path.isfile(f'{DKP}/libctru/lib/libcitro3d.a')
-    if WIN: return None if ok and os.path.isfile(DKP_BASH) and os.path.isfile(DKP_MAKE) else 'devkitPro (devkitpro.org/wiki/Getting_Started) + 3ds-dev'
-    return None if ok else 'devkitPro + sudo dkp-pacman -S 3ds-dev'
+def chk_switch(): return dkp_check(['libnx/switch_rules', 'portlibs/switch/lib/libSDL2.a'], DKP_PKGS['switch'])
+def chk_wiiu(): return dkp_check(['wut/share/wut_rules', 'portlibs/wiiu/lib/libSDL2.a'], DKP_PKGS['wiiu'])
+def chk_3ds(): return dkp_check(['devkitARM/3ds_rules', 'libctru/lib/libcitro3d.a', 'libctru/lib/libcitro2d.a'], DKP_PKGS['3ds'])
 
 DEVICES = [  # key, name, script, check
     ('windows', 'Windows', 'build_windows.sh', chk_windows),
@@ -491,7 +512,7 @@ class Worker(threading.Thread):
                             ok = self.run_cmd([sys.executable, 'tools/build_android.py'], i, nsrc, pat) == 0
                         elif ok and WIN and key == 'windows':
                             ok = self.build_windows_native(i)
-                        elif ok and WIN:                     # Switch / Wii U / 3DS: the scripts, with devkitPro's bash
+                        elif ok and DKP_WIN and key in DKP_PKGS:   # Switch / Wii U / 3DS: the scripts, with devkitPro's bash
                             ok = self.run_cmd([DKP_BASH, '-lc', f'cd "{msys_path(ROOT)}" && sh platform/{script}'], i, nsrc, pat,
                                               env={'MSYSTEM': 'MSYS', 'CHERE_INVOKING': '1'}) == 0
                         elif ok:
@@ -595,6 +616,8 @@ class App:
             stl = self.lbl(grid, 10, 'bold', fg=MUTED, anchor='e', width=11)
             self.dev[key] = dict(var=v, cb=cb, note=note, pb=pb, st=stl, chk=chk, row=i)
         self.dev_vars = {k: d['var'] for k, d in self.dev.items()}
+        # Windows devkitPro without some packages: one click installs them with its pacman
+        self.w_dkp = self.button(p2, self.install_dkp, size=9); self.dkp_busy = False
 
         # 3: build
         p3 = self.panel(2)
@@ -630,16 +653,40 @@ class App:
         self.w_go['text'], self.w_stop['text'], self.w_open['text'] = t['go'], t['stop'], t['open']
         self.w_logbtn['text'] = t['hidelog'] if self.log_on else t['log']
         self.w_now['text'] = t[self.status] if self.status in t else (self.status or t['ready'])
+        dkp_missing = []
         for key, d in self.dev.items():
             miss = d['chk'](); note = (t['missing'] + miss) if miss else ('✓ ' + t['ok'])
             if key == 'windows' and WIN and not win_cxx(): note += '  ·  ' + t['w_dl']
             if key == 'android' and not miss: note += '  ·  ' + android_note(t)
             if key == '3ds' and not miss: note += '\n' + t['n3ds']
             d['note'].configure(text=note, fg=(ORA if miss else MUTED))
+            if key in DKP_PKGS and miss and DKP_WIN: dkp_missing += DKP_PKGS[key]
             if not self.worker:
                 if miss: d['var'].set(False)
                 d['cb'].configure(state='disabled' if miss else 'normal')
+        self.dkp_missing = dkp_missing
+        self.w_dkp['text'] = t['dkp_busy'] if self.dkp_busy else t['dkp_inst']
+        if dkp_missing or self.dkp_busy: self.w_dkp.grid(row=3, column=0, columnspan=2, sticky='w', pady=(8, 0))
+        else: self.w_dkp.grid_remove()
         self.check_rom()
+
+    def install_dkp(self):
+        if self.dkp_busy or self.worker or not self.dkp_missing: return
+        self.dkp_busy = True; self.w_dkp.configure(state='disabled'); self.refresh_texts()
+        pk = ' '.join(sorted(set(self.dkp_missing)))
+        def work():
+            try:
+                self.q.put(('log', '$ pacman -Sy --needed --noconfirm ' + pk))
+                r = subprocess.run([DKP_BASH, '-lc', 'pacman -Sy --needed --noconfirm ' + pk], capture_output=True, text=True,
+                                   errors='replace', **NEWGROUP)
+                self.q.put(('log', r.stdout + r.stderr)); ok = r.returncode == 0
+            except Exception as ex: self.q.put(('log', str(ex))); ok = False
+            self.q.put(('dkp', ok))
+        threading.Thread(target=work, daemon=True).start()
+
+    def dkp_done(self, ok):
+        self.dkp_busy = False; self.w_dkp.configure(state='normal'); self.refresh_texts()
+        if not ok: self.status = 'dkp_fail'; self.w_now.configure(text=self.t['dkp_fail'], fg=ORA)
 
     def set_lang(self, code):
         self.lang = code; self.save_cfg(); self.refresh_texts()
@@ -740,6 +787,7 @@ class App:
                     if i >= 3: self.dev[self.keys[i]]['pb']['value'] = self.prog[i] * 1000
                     self.update_total()
                 elif m[0] == 'step': self.set_step(m[1], m[2])
+                elif m[0] == 'dkp': self.dkp_done(m[1])
                 elif m[0] == 'why': self.why.append(self.step_name(m[1]) + ': ' + m[2])
                 elif m[0] == 'msg': messagebox.showerror(self.t['title'], m[1])
                 elif m[0] == 'end': self.finish(m[1])

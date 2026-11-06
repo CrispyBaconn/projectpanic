@@ -25,7 +25,8 @@ Start it:
   Android works on Windows too: if Android Studio is installed it uses its Java and SDK, otherwise the first build
   downloads them (~3 GB) by itself.
   Switch, Wii U and 3DS work from Windows with the [devkitPro installer](https://devkitpro.org/wiki/Getting_Started)
-  (tick the Switch, Wii U and 3DS packages). Only the Linux build needs Linux or WSL.
+  (in `C:\devkitPro`, also when the builder runs in WSL). If some packages are missing (for example `switch-sdl2`,
+  `wiiu-sdl2`), the "Install the missing devkitPro packages" button installs them. Only the Linux build needs Linux or WSL.
 - **Linux / WSL**: `sudo apt install python3-tk p7zip-full`, then `python3 ProjectPanicBuilder.py`.
 
 Devices whose tools are missing are greyed out, with what to install. If a build fails the window says why, and
