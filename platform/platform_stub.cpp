@@ -1480,7 +1480,15 @@ int main(int argc, char** argv) {
         argc = 6; argv = wargs;
         printf("console: folder %s, ROMs in %s\n", D.c_str(), a5.c_str());
 #ifdef __3DS__
-        n3ds::cfg.load(); i18n::scan(); i18n::select(n3ds::cfg.ui_lang);
+        n3ds::cfg.load(); i18n::scan();
+        {   // system language; Chinese only on Chinese consoles (the other system fonts lack the simplified characters)
+            u8 lang = 1, region = 0;
+            if (R_SUCCEEDED(cfguInit())) { CFGU_GetSystemLanguage(&lang); CFGU_SecureInfoGetRegion(&region); cfguExit(); }
+            static const char* codes[12] = {"ja", "en", "fr", "de", "it", "es", "zh", "ko", "nl", "pt", "ru", "zh"};
+            if (lang < 12) i18n::sys() = codes[lang];
+            if (region != CFG_REGION_CHN) { auto& L = i18n::all(); L.erase(std::remove_if(L.begin(), L.end(), [](const i18n::Lang& l) { return l.code == "zh"; }), L.end()); }
+        }
+        i18n::select(n3ds::cfg.ui_lang);
         if (!n3ds::init(D + "/ui")) { printf("3DS: GPU not initialised\n"); fflush(stdout); }
         n3ds::splash(i18n::tru("loading"));
 #endif

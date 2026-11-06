@@ -30,8 +30,16 @@ Start it:
 
 Devices whose tools are missing are greyed out, with what to install. If a build fails the window says why, and
 "Show details" opens the full log. The results end up in `dist/`; "Open the dist folder" opens it.
-The window is in Italian when Windows (or the Linux system) is in Italian, in English otherwise; the button at the top
-right switches language and the choice is remembered.
+The window speaks the language of Windows (or of the Linux system) when it is one of English, Italian, German, French,
+Spanish, Portuguese, Russian, Japanese or Simplified Chinese, and English otherwise; the menu at the top right changes it
+and the choice is remembered.
+
+## Languages
+
+The game menu has the same 9 languages (`platform/lang/*.json`) and starts in the language of the system; change it in
+Settings → Game → Menu language. To add a language, copy `en.json`, translate it and, if it uses letters the menu fonts
+lack, run `python3 tools/bake_ui_font.py` (needs Pillow and `fonts-noto-cjk`). On 3DS, Chinese appears only on
+Chinese consoles, whose system font has the simplified characters.
 
 Optional: put your own square picture in `platform/ui/icon.png` and it becomes the icon everywhere: the Windows
 executable, the game and builder windows, Android, Switch, Wii U and 3DS (`tools/make_icons.py`, run by the builds,

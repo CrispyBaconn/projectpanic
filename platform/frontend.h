@@ -35,7 +35,7 @@ struct Config {
     int invert = 0;                            // inverts the axis
     int axis = 0;                              // 0 = left stick X, 1 = right stick X
     int fullscreen = 0;
-    std::string ui_lang = "en";                // files in lang/ (without .json)
+    std::string ui_lang;                       // files in lang/ (without .json); empty = system language
     int game_lang = -1;                        // -1 = leave unchanged; 0..7 = JPN ENG GER FRA SPA POR ITA KOR
     int fps = 0;                               // screen refresh: 0 = monitor VSync, then FPS_LIST (the game stays at 59.9 Hz)
     int wide = 0;                              // 1 = experimental 16:9 (more is visible at the sides, text stays 4:3)

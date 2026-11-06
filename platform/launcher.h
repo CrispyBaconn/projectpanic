@@ -32,7 +32,11 @@ static bool launcher(SDL_Window* win, SDL_Renderer* ren, InputState& is, bool in
     using namespace ui;
     static Ui U; static SDL_Renderer* U_ren = nullptr;
     Config& c = is.cfg; Pads& pads = is.pads;
-    i18n::scan(); i18n::select(c.ui_lang);
+    i18n::scan();
+#if SDL_VERSION_ATLEAST(2, 0, 14)
+    if (i18n::sys().empty()) if (SDL_Locale* loc = SDL_GetPreferredLocales()) { if (loc[0].language) i18n::sys() = loc[0].language; SDL_free(loc); }
+#endif
+    i18n::select(c.ui_lang);
     if (U_ren != ren) { U = Ui(); U.init(ren, ui_dir()); U_ren = ren; }
     auto T = [](const char* k) { return i18n::tru(k); };
 

@@ -7,6 +7,7 @@
 #include <cmath>
 #include <string>
 #include <vector>
+#include <unordered_map>
 #include <algorithm>
 #include "ui_font.h"
 #define STB_IMAGE_STATIC
@@ -39,12 +40,20 @@ static const SDL_Color INK = {12, 10, 20, 255}, WHITE = {255, 255, 255, 255}, YE
 
 struct FontTex {
     const uifont::Font* f = nullptr; SDL_Texture* tex = nullptr; int tw = 0, th = 0;
-    short lat[256]; std::vector<std::pair<uint32_t, int>> ext; float cap_top = 0, cap_bot = 0;
+    short lat[256]; std::unordered_map<uint32_t, int> ext; float cap_top = 0, cap_bot = 0;
+    const FontTex* fb = nullptr;                    // letters this font lacks (Cyrillic, Japanese, Chinese)
     int find(uint32_t cp) const {
         if (cp < 256) return lat[cp];
-        for (auto& e : ext) if (e.first == cp) return e.second;
+        auto it = ext.find(cp); if (it != ext.end()) return it->second;
         if (cp == 0x2018 || cp == 0x2019) return lat['\''];
         return -1;
+    }
+    // glyph for cp: from this font, else from the fallback (scaled so the capitals are as tall), else '?'
+    struct Ref { const FontTex* t; int g; float k; };
+    Ref get(uint32_t cp) const {
+        int g = find(cp); if (g >= 0) return {this, g, 1.f};
+        if (fb && fb->tex) { int h = fb->find(cp); if (h >= 0) return {fb, h, (cap_bot - cap_top) / std::max(1.f, fb->cap_bot - fb->cap_top)}; }
+        return {this, find('?'), 1.f};
     }
 };
 
@@ -52,7 +61,7 @@ struct Image { SDL_Texture* tex = nullptr; int w = 0, h = 0; };
 
 struct Ui {
     SDL_Renderer* ren = nullptr;
-    FontTex disp, body;
+    FontTex disp, body, fb;
     SDL_Texture* chev = nullptr;                    // zig-zag band (selected button)
     Image bg, logo;
     float W = 1280, H = 720;                        // current logical area
@@ -68,6 +77,7 @@ struct Ui {
     }
     bool load_font(FontTex& ft, const uifont::Font& f) {
         ft.f = &f; int w, h, n;
+        if (!f.png) return false;
         unsigned char* g = stbi_load_from_memory(f.png, (int)f.png_size, &w, &h, &n, 1);
         if (!g) return false;
         std::vector<unsigned char> px((size_t)w * h * 4);
@@ -75,7 +85,7 @@ struct Ui {
         stbi_image_free(g);
         ft.tex = tex_rgba(ren, px.data(), w, h); ft.tw = w; ft.th = h;
         for (short& v : ft.lat) v = -1;
-        for (int i = 0; i < f.n; i++) { if (f.g[i].cp < 256) ft.lat[f.g[i].cp] = (short)i; else ft.ext.push_back({f.g[i].cp, i}); }
+        for (int i = 0; i < f.n; i++) { if (f.g[i].cp < 256) ft.lat[f.g[i].cp] = (short)i; else ft.ext[f.g[i].cp] = i; }
         int H_ = ft.find('H');
         if (H_ >= 0) { const auto& q = f.g[H_]; ft.cap_top = q.oy + f.R + 1; ft.cap_bot = q.oy + q.h - f.R - 1; }
         return ft.tex != nullptr;
@@ -109,6 +119,7 @@ struct Ui {
     void init(SDL_Renderer* r, const std::string& uidir) {
         ren = r;
         load_font(disp, uifont::display); load_font(body, uifont::body); make_chevrons();
+        if (load_font(fb, uifont::fallback)) disp.fb = body.fb = &fb;
         bg = load_png(uidir + "/background.png"); logo = load_png(uidir + "/logo.png");
         printf("menu: background %s, logo %s (folder %s)\n", bg.tex ? "yes" : "no", logo.tex ? "yes" : "no", uidir.c_str());
     }
@@ -174,7 +185,7 @@ struct Ui {
     }
     float text_w(const FontTex& ft, const std::string& s, float px) {
         float sc = px / ft.f->size, w = 0;
-        for (size_t i = 0; i < s.size();) { int g = ft.find(next_cp(s, i)); if (g < 0) g = ft.find('?'); if (g >= 0) w += ft.f->g[g].adv4 / 4.f * sc; }
+        for (size_t i = 0; i < s.size();) { auto r = ft.get(next_cp(s, i)); if (r.g >= 0) w += r.t->f->g[r.g].adv4 / 4.f * sc * r.k; }
         return w;
     }
     // y = vertical centre of the capitals; align: 0 left, 1 centre, 2 right. Returns the width.
@@ -186,22 +197,29 @@ struct Ui {
         const float sc = px / ft.f->size;
         if (align == 1) x -= w / 2; else if (align == 2) x -= w;
         const float top = cy - (ft.cap_top + ft.cap_bot) / 2 * sc, ct = top + ft.cap_top * sc, cb = top + ft.cap_bot * sc;
+        const float cy0 = top + (ft.cap_top + ft.cap_bot) / 2 * sc;     // centre of the capitals
         auto pass = [&](bool ol, float dx, float dy, SDL_Color a, SDL_Color b) {
-            float pen = x;
-            for (size_t i = 0; i < s.size();) {
-                int gi = ft.find(next_cp(s, i)); if (gi < 0) gi = ft.find('?'); if (gi < 0) continue;
-                const auto& g = ft.f->g[gi];
-                if (g.w) {
-                    float x0 = pen + g.ox * sc + dx, y0 = top + g.oy * sc + dy, x1 = x0 + g.w * sc, y1 = y0 + g.h * sc;
-                    float u0 = (g.x + (ol ? g.w + 1 : 0)) / (float)ft.tw, v0 = g.y / (float)ft.th, u1 = u0 + g.w / (float)ft.tw, v1 = v0 + g.h / (float)ft.th;
-                    SDL_Color ca = mix(a, b, (y0 - dy - ct) / std::max(1.f, cb - ct)), cb_ = mix(a, b, (y1 - dy - ct) / std::max(1.f, cb - ct));
-                    int base = (int)vb.size();
-                    vtx(x0, y0, ca, u0, v0); vtx(x1, y0, ca, u1, v0); vtx(x1, y1, cb_, u1, v1); vtx(x0, y1, cb_, u0, v1);
-                    ib.insert(ib.end(), {base, base + 1, base + 2, base, base + 2, base + 3});
+            for (int layer = 0; layer < 2; layer++) {                       // 0: own atlas, 1: fallback atlas
+                const FontTex* T = layer ? ft.fb : &ft; if (!T || !T->tex) continue;
+                float pen = x;
+                for (size_t i = 0; i < s.size();) {
+                    auto r = ft.get(next_cp(s, i)); if (r.g < 0) continue;
+                    const auto& g = r.t->f->g[r.g]; const float gs = sc * r.k;
+                    if (g.w && r.t == T) {
+                        float x0 = pen + g.ox * gs + dx, y0, x1 = x0 + g.w * gs, y1;
+                        if (r.t == &ft) y0 = top + g.oy * sc + dy;
+                        else y0 = cy0 + (g.oy - (T->cap_top + T->cap_bot) / 2) * gs + dy;
+                        y1 = y0 + g.h * gs;
+                        float u0 = (g.x + (ol ? g.w + 1 : 0)) / (float)T->tw, v0 = g.y / (float)T->th, u1 = u0 + g.w / (float)T->tw, v1 = v0 + g.h / (float)T->th;
+                        SDL_Color ca = mix(a, b, (y0 - dy - ct) / std::max(1.f, cb - ct)), cb_ = mix(a, b, (y1 - dy - ct) / std::max(1.f, cb - ct));
+                        int base = (int)vb.size();
+                        vtx(x0, y0, ca, u0, v0); vtx(x1, y0, ca, u1, v0); vtx(x1, y1, cb_, u1, v1); vtx(x0, y1, cb_, u0, v1);
+                        ib.insert(ib.end(), {base, base + 1, base + 2, base, base + 2, base + 3});
+                    }
+                    pen += g.adv4 / 4.f * gs;
                 }
-                pen += g.adv4 / 4.f * sc;
+                flush(T->tex);
             }
-            flush(ft.tex);
         };
         if (shadow) { float o = std::max(2.f, px * 0.06f); pass(outline, o * 0.6f, o, alpha(INK, 0.55f), alpha(INK, 0.55f)); }
         if (outline) pass(true, 0, 0, oc, oc);

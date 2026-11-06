@@ -1,7 +1,8 @@
 // Menu translations: JSON files in "lang/" (one per language, e.g. lang/it.json, lang/en.json).
 // Each file is a flat object { "key": "text", ... }; "language_name" is the name shown in the menu.
 // Missing keys use the built-in English text, so an incomplete file still works.
-// The menu font is ASCII: accented letters are simplified (e' -> e').
+// The new menu draws every language (tru); the old 8x16 on-screen font is ASCII only (tr): accented letters are
+// simplified (e' -> e') and texts it cannot show (Russian, Japanese, Chinese) use the English text.
 #pragma once
 #include <cstdio>
 #include <map>
@@ -115,6 +116,8 @@ struct Lang { std::string code, name; std::map<std::string, std::string> t; };
 inline std::string& dir() { static std::string d = getenv("S23_LANGDIR") ? getenv("S23_LANGDIR") : "lang"; return d; }
 inline std::vector<Lang>& all() { static std::vector<Lang> v; return v; }
 inline int& cur() { static int c = -1; return c; }
+// language of the system (two-letter code, set by the platform code); used while the user has not chosen one
+inline std::string& sys() { static std::string s; return s; }
 
 inline void scan() {
     auto& v = all(); v.clear();
@@ -126,14 +129,17 @@ inline void scan() {
             Lang L; L.code = n.substr(0, n.size() - 5);
             if (!parse_object(s, L.t)) { fprintf(stderr, "language %s: invalid JSON, ignored\n", p.c_str()); continue; }
             L.name = L.t.count("language_name") ? ascii(L.t["language_name"]) : L.code;
+            if (L.name.find('?') != std::string::npos) L.name = L.code;
             v.push_back(std::move(L));
         }
         closedir(d);
     }
     std::sort(v.begin(), v.end(), [](const Lang& a, const Lang& b) { return a.code < b.code; });
 }
+// empty code: the system language if there is a file for it, otherwise English
 inline void select(const std::string& code) {
     cur() = -1; for (size_t i = 0; i < all().size(); i++) if (all()[i].code == code) cur() = (int)i;
+    if (cur() < 0 && code.empty()) { for (const std::string& c : {sys(), std::string("en")}) if (cur() < 0) for (size_t i = 0; i < all().size(); i++) if (all()[i].code == c) cur() = (int)i; }
 }
 inline std::string cur_code() { return cur() >= 0 ? all()[cur()].code : "en"; }
 inline std::string cur_name() { return cur() >= 0 ? all()[cur()].name : "English"; }
@@ -145,7 +151,8 @@ inline std::string tru(const std::string& key) {
 }
 // text for the key in the active language (then built-in English, then the key itself)
 inline std::string tr(const std::string& key) {
-    if (cur() >= 0) { auto& t = all()[cur()].t; auto it = t.find(key); if (it != t.end()) return ascii(it->second); }
+    if (cur() >= 0) { auto& t = all()[cur()].t; auto it = t.find(key);
+        if (it != t.end()) { std::string a = ascii(it->second); if (a.find('?') == std::string::npos || it->second.find('?') != std::string::npos) return a; } }
     auto it = builtin().find(key); return it != builtin().end() ? it->second : key;
 }
 

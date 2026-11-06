@@ -294,7 +294,7 @@ static void audio_push(const int16_t* s, size_t frames) {
 namespace n3ds {
 
 struct Cfg {                                           // sdmc:/3ds/panicprk/panicprk.ini
-    std::string ui_lang = "en"; int game_lang = -1, skip_post = 0, service_dip = 0, stats = 1;
+    std::string ui_lang; int game_lang = -1, skip_post = 0, service_dip = 0, stats = 1;
     static std::string path() { return std::string(S23_APP_DIR) + "/panicprk.ini"; }
     void load() {
         FILE* f = fopen(path().c_str(), "r"); if (!f) return; char l[256];

@@ -62,25 +62,135 @@ TXT = {
             n3ds='serve la cartella assets creata dalla versione PC: compila anche Windows o Linux e avvia il gioco una volta',
             confirm_stop='Fermare la compilazione?', reuse='già estratte: uso panicprkrom/', no_file='file non trovato', recheck='Ricontrolla', w_dl='la prima volta scarica il compilatore (LLVM-MinGW, ~150 MB)',
             no_elftools='manca pyelftools:  sudo apt install python3-pyelftools'),
+ 'de': dict(title='Project Panic Builder', sub='Panic Park für deine Geräte kompilieren',
+            s1='1  ROM-Set', s1h='Wähle dein panicprk-Archiv (.zip oder .7z)', browse='Durchsuchen…',
+            s2='2  Geräte', s2h='Hake die Geräte an (ausgegraut: erst das angezeigte Werkzeug installieren)', s3='3  Kompilieren', go='KOMPILIEREN', stop='Stopp',
+            log='Details anzeigen', hidelog='Details ausblenden', ready='Bereit', missing='fehlt: ',
+            ok='bereit', st_wait='wartet', st_run='läuft…', st_ok='fertig', st_err='Fehler', st_skip='übersprungen',
+            p_rom='ROM-Set entpacken', p_elf='Spielprogramm finden', p_gen='C++-Code erzeugen',
+            no_rom='Wähle zuerst das ROM-Archiv.', no_plat='Hake mindestens ein Gerät an.',
+            bad_rom='Das Archiv enthält nicht die Panic-Park-ROMs (pnp2vera.ic1 / pnp2vera.ic2).',
+            no7z='Das .7z-Archiv lässt sich nicht öffnen: installiere 7-Zip (7-zip.org, oder  sudo apt install p7zip-full)',
+            done='Fertig! Die Dateien sind im Ordner dist.', failed='Etwas ist schiefgelaufen: öffne „Details anzeigen“.',
+            stopped='Gestoppt.', open='Ordner dist öffnen', a_setup='beim ersten Mal werden Java und das Android-SDK geladen (~3 GB)', a_studio='nutzt Android Studio (dessen Java und SDK)', a_add='ergänzt die fehlenden SDK-Teile', a_ready='SDK schon installiert',
+            n3ds='braucht den Ordner assets der PC-Version: kompiliere auch Windows oder Linux und starte das Spiel einmal',
+            confirm_stop='Kompilieren abbrechen?', reuse='schon entpackt: nutze panicprkrom/', no_file='Datei nicht gefunden', recheck='Erneut prüfen', w_dl='beim ersten Mal wird der Compiler geladen (LLVM-MinGW, ~150 MB)',
+            no_elftools='pyelftools fehlt:  sudo apt install python3-pyelftools'),
+ 'fr': dict(title='Project Panic Builder', sub='Compile Panic Park pour tes appareils',
+            s1='1  ROM', s1h='Choisis ton archive panicprk (.zip ou .7z)', browse='Parcourir…',
+            s2='2  Appareils', s2h='Coche les appareils (grisés : installe d’abord l’outil indiqué)', s3='3  Compiler', go='COMPILER', stop='Arrêter',
+            log='Afficher les détails', hidelog='Masquer les détails', ready='Prêt', missing='manque : ',
+            ok='prêt', st_wait='en attente', st_run='en cours…', st_ok='terminé', st_err='erreur', st_skip='ignoré',
+            p_rom='Extraire les ROM', p_elf='Trouver le programme du jeu', p_gen='Générer le code C++',
+            no_rom='Choisis d’abord l’archive des ROM.', no_plat='Coche au moins un appareil.',
+            bad_rom='L’archive ne contient pas les ROM de Panic Park (pnp2vera.ic1 / pnp2vera.ic2).',
+            no7z='Impossible d’ouvrir l’archive .7z : installe 7-Zip (7-zip.org, ou  sudo apt install p7zip-full)',
+            done='Terminé ! Les fichiers sont dans le dossier dist.', failed='Un problème est survenu : ouvre « Afficher les détails ».',
+            stopped='Arrêté.', open='Ouvrir le dossier dist', a_setup='la première fois, télécharge Java et le SDK Android (~3 Go)', a_studio='utilise Android Studio (son Java et son SDK)', a_add='ajoute les parties manquantes du SDK', a_ready='SDK déjà installé',
+            n3ds='il faut le dossier assets créé par la version PC : compile aussi Windows ou Linux et lance le jeu une fois',
+            confirm_stop='Arrêter la compilation ?', reuse='déjà extraites : j’utilise panicprkrom/', no_file='fichier introuvable', recheck='Revérifier', w_dl='la première fois, télécharge le compilateur (LLVM-MinGW, ~150 Mo)',
+            no_elftools='pyelftools manque :  sudo apt install python3-pyelftools'),
+ 'es': dict(title='Project Panic Builder', sub='Compila Panic Park para tus dispositivos',
+            s1='1  ROM', s1h='Elige tu archivo panicprk (.zip o .7z)', browse='Examinar…',
+            s2='2  Dispositivos', s2h='Marca los dispositivos (en gris: instala primero la herramienta indicada)', s3='3  Compilar', go='COMPILAR', stop='Detener',
+            log='Ver detalles', hidelog='Ocultar detalles', ready='Listo', missing='falta: ',
+            ok='listo', st_wait='en espera', st_run='en curso…', st_ok='hecho', st_err='error', st_skip='omitido',
+            p_rom='Extraer las ROM', p_elf='Encontrar el programa del juego', p_gen='Generar el código C++',
+            no_rom='Primero elige el archivo de las ROM.', no_plat='Marca al menos un dispositivo.',
+            bad_rom='El archivo no contiene las ROM de Panic Park (pnp2vera.ic1 / pnp2vera.ic2).',
+            no7z='No se puede abrir el archivo .7z: instala 7-Zip (7-zip.org, o  sudo apt install p7zip-full)',
+            done='¡Terminado! Los archivos están en la carpeta dist.', failed='Algo salió mal: abre «Ver detalles».',
+            stopped='Detenido.', open='Abrir la carpeta dist', a_setup='la primera vez descarga Java y el SDK de Android (~3 GB)', a_studio='usa Android Studio (su Java y su SDK)', a_add='añade las partes que faltan del SDK', a_ready='SDK ya instalado',
+            n3ds='necesita la carpeta assets creada por la versión de PC: compila también Windows o Linux y abre el juego una vez',
+            confirm_stop='¿Detener la compilación?', reuse='ya extraídas: uso panicprkrom/', no_file='archivo no encontrado', recheck='Comprobar de nuevo', w_dl='la primera vez descarga el compilador (LLVM-MinGW, ~150 MB)',
+            no_elftools='falta pyelftools:  sudo apt install python3-pyelftools'),
+ 'pt': dict(title='Project Panic Builder', sub='Compile Panic Park para os seus dispositivos',
+            s1='1  ROM', s1h='Escolha o seu arquivo panicprk (.zip ou .7z)', browse='Procurar…',
+            s2='2  Dispositivos', s2h='Marque os dispositivos (em cinza: instale antes a ferramenta indicada)', s3='3  Compilar', go='COMPILAR', stop='Parar',
+            log='Mostrar detalhes', hidelog='Ocultar detalhes', ready='Pronto', missing='falta: ',
+            ok='pronto', st_wait='aguardando', st_run='em andamento…', st_ok='feito', st_err='erro', st_skip='ignorado',
+            p_rom='Extrair as ROMs', p_elf='Encontrar o programa do jogo', p_gen='Gerar o código C++',
+            no_rom='Escolha primeiro o arquivo das ROMs.', no_plat='Marque pelo menos um dispositivo.',
+            bad_rom='O arquivo não contém as ROMs de Panic Park (pnp2vera.ic1 / pnp2vera.ic2).',
+            no7z='Não foi possível abrir o arquivo .7z: instale o 7-Zip (7-zip.org, ou  sudo apt install p7zip-full)',
+            done='Pronto! Os arquivos estão na pasta dist.', failed='Algo deu errado: abra "Mostrar detalhes".',
+            stopped='Parado.', open='Abrir a pasta dist', a_setup='na primeira vez baixa o Java e o SDK do Android (~3 GB)', a_studio='usa o Android Studio (o Java e o SDK dele)', a_add='adiciona as partes que faltam do SDK', a_ready='SDK já instalado',
+            n3ds='precisa da pasta assets criada pela versão de PC: compile também Windows ou Linux e abra o jogo uma vez',
+            confirm_stop='Parar a compilação?', reuse='já extraídas: usando panicprkrom/', no_file='arquivo não encontrado', recheck='Verificar de novo', w_dl='na primeira vez baixa o compilador (LLVM-MinGW, ~150 MB)',
+            no_elftools='falta o pyelftools:  sudo apt install python3-pyelftools'),
+ 'ru': dict(title='Project Panic Builder', sub='Сборка Panic Park для ваших устройств',
+            s1='1  ROM', s1h='Выберите архив panicprk (.zip или .7z)', browse='Обзор…',
+            s2='2  Устройства', s2h='Отметьте устройства (серые: сначала установите указанный инструмент)', s3='3  Сборка', go='СОБРАТЬ', stop='Стоп',
+            log='Показать подробности', hidelog='Скрыть подробности', ready='Готово', missing='нет: ',
+            ok='готово', st_wait='ожидание', st_run='выполняется…', st_ok='готово', st_err='ошибка', st_skip='пропущено',
+            p_rom='Распаковать ROM', p_elf='Найти программу игры', p_gen='Создать код C++',
+            no_rom='Сначала выберите архив с ROM.', no_plat='Отметьте хотя бы одно устройство.',
+            bad_rom='В архиве нет ROM Panic Park (pnp2vera.ic1 / pnp2vera.ic2).',
+            no7z='Не удалось открыть архив .7z: установите 7-Zip (7-zip.org или  sudo apt install p7zip-full)',
+            done='Готово! Файлы в папке dist.', failed='Что-то пошло не так: откройте «Показать подробности».',
+            stopped='Остановлено.', open='Открыть папку dist', a_setup='в первый раз скачивает Java и Android SDK (~3 ГБ)', a_studio='использует Android Studio (его Java и SDK)', a_add='докачивает недостающие части SDK', a_ready='SDK уже установлен',
+            n3ds='нужна папка assets, которую создаёт версия для ПК: соберите также Windows или Linux и запустите игру один раз',
+            confirm_stop='Остановить сборку?', reuse='уже распакованы: используется panicprkrom/', no_file='файл не найден', recheck='Проверить снова', w_dl='в первый раз скачивает компилятор (LLVM-MinGW, ~150 МБ)',
+            no_elftools='нет pyelftools:  sudo apt install python3-pyelftools'),
+ 'ja': dict(title='Project Panic Builder', sub='Panic Park をお使いの機器向けにビルド',
+            s1='1  ROM セット', s1h='panicprk のアーカイブ (.zip または .7z) を選んでください', browse='参照…',
+            s2='2  機器', s2h='ビルドする機器にチェック (灰色: 先に表示されたツールをインストール)', s3='3  ビルド', go='ビルド', stop='停止',
+            log='詳細を表示', hidelog='詳細を隠す', ready='準備完了', missing='不足: ',
+            ok='準備完了', st_wait='待機中', st_run='実行中…', st_ok='完了', st_err='失敗', st_skip='スキップ',
+            p_rom='ROM セットを展開', p_elf='ゲームのプログラムを探す', p_gen='C++ コードを生成',
+            no_rom='先に ROM のアーカイブを選んでください。', no_plat='機器を1つ以上チェックしてください。',
+            bad_rom='アーカイブに Panic Park の ROM (pnp2vera.ic1 / pnp2vera.ic2) がありません。',
+            no7z='.7z アーカイブを開けません: 7-Zip をインストールしてください (7-zip.org、または  sudo apt install p7zip-full)',
+            done='完了! ファイルは dist フォルダーにあります。', failed='問題が発生しました: 「詳細を表示」を開いてください。',
+            stopped='停止しました。', open='dist フォルダーを開く', a_setup='初回は Java と Android SDK をダウンロード (~3 GB)', a_studio='Android Studio (その Java と SDK) を使用', a_add='足りない SDK の部品を追加', a_ready='SDK はインストール済み',
+            n3ds='PC 版が作る assets フォルダーが必要: Windows か Linux もビルドして、ゲームを一度起動してください',
+            confirm_stop='ビルドを停止しますか?', reuse='展開済み: panicprkrom/ を使用', no_file='ファイルが見つかりません', recheck='再確認', w_dl='初回はコンパイラーをダウンロード (LLVM-MinGW, ~150 MB)',
+            no_elftools='pyelftools がありません:  sudo apt install python3-pyelftools'),
+ 'zh': dict(title='Project Panic Builder', sub='为你的设备编译 Panic Park',
+            s1='1  ROM', s1h='选择你的 panicprk 压缩包 (.zip 或 .7z)', browse='浏览…',
+            s2='2  设备', s2h='勾选要编译的设备 (灰色: 请先安装提示的工具)', s3='3  编译', go='编译', stop='停止',
+            log='显示详情', hidelog='隐藏详情', ready='就绪', missing='缺少: ',
+            ok='就绪', st_wait='等待中', st_run='进行中…', st_ok='完成', st_err='失败', st_skip='已跳过',
+            p_rom='解压 ROM', p_elf='查找游戏程序', p_gen='生成 C++ 代码',
+            no_rom='请先选择 ROM 压缩包。', no_plat='请至少勾选一个设备。',
+            bad_rom='压缩包里没有 Panic Park 的 ROM (pnp2vera.ic1 / pnp2vera.ic2)。',
+            no7z='无法打开 .7z 压缩包: 请安装 7-Zip (7-zip.org，或  sudo apt install p7zip-full)',
+            done='完成! 文件在 dist 文件夹中。', failed='出了点问题: 请打开“显示详情”。',
+            stopped='已停止。', open='打开 dist 文件夹', a_setup='首次会下载 Java 和 Android SDK (~3 GB)', a_studio='使用 Android Studio (它的 Java 和 SDK)', a_add='补充缺少的 SDK 组件', a_ready='SDK 已安装',
+            n3ds='需要 PC 版生成的 assets 文件夹: 请同时编译 Windows 或 Linux 并运行一次游戏',
+            confirm_stop='停止编译?', reuse='已解压: 使用 panicprkrom/', no_file='找不到文件', recheck='重新检查', w_dl='首次会下载编译器 (LLVM-MinGW, ~150 MB)',
+            no_elftools='缺少 pyelftools:  sudo apt install python3-pyelftools'),
 }
+LANGS = [('en', 'English'), ('it', 'Italiano'), ('de', 'Deutsch'), ('fr', 'Français'), ('es', 'Español'),
+         ('pt', 'Português'), ('ru', 'Русский'), ('ja', '日本語'), ('zh', '简体中文')]
 
 def have(cmd): return shutil.which(cmd) is not None
 
+# Windows primary language id -> language of the window (LANG_GERMAN 0x07, LANG_FRENCH 0x0c, ...)
+WIN_LANGS = {0x10: 'it', 0x07: 'de', 0x0c: 'fr', 0x0a: 'es', 0x16: 'pt', 0x19: 'ru', 0x11: 'ja', 0x04: 'zh'}
+
+def lang_of(name):
+    """'de_DE.UTF-8', 'pt-BR', 'zh-CN' ... -> one of the window's languages ('en' if not translated)."""
+    c = name.lower().replace('-', '_')[:2]
+    return c if c in TXT and not name.lower().startswith(('zh_tw', 'zh_hk', 'zh_mo', 'zh-tw', 'zh-hk', 'zh-mo', 'zh_hant', 'zh-hant')) else 'en'
+
 def system_lang():
-    """'it' when the system (Windows display language, or the Linux locale) is Italian, otherwise 'en'."""
+    """The language of the system (Windows display language, or the Linux locale) if the window has it, else 'en'."""
     try:
         if WIN:
             import ctypes
-            return 'it' if ctypes.windll.kernel32.GetUserDefaultUILanguage() & 0x3ff == 0x10 else 'en'   # LANG_ITALIAN
+            lid = ctypes.windll.kernel32.GetUserDefaultUILanguage()
+            if lid & 0x3ff == 0x04 and lid not in (0x0804, 0x1004): return 'en'      # traditional Chinese
+            return WIN_LANGS.get(lid & 0x3ff, 'en')
         try:                                                  # WSL: the language of Windows itself
             if 'microsoft' in open('/proc/version').read().lower() and have('powershell.exe'):
                 r = subprocess.run(['powershell.exe', '-NoProfile', '-Command', '(Get-UICulture).Name'],
                                    capture_output=True, text=True, timeout=8)
-                if r.returncode == 0 and r.stdout.strip(): return 'it' if r.stdout.strip().lower().startswith('it') else 'en'
+                if r.returncode == 0 and r.stdout.strip(): return lang_of(r.stdout.strip())
         except Exception: pass
         for k in ('LC_ALL', 'LC_MESSAGES', 'LANGUAGE', 'LANG'):
             v = os.environ.get(k, '')
-            if v and v not in ('C', 'POSIX') and not v.startswith('C.'): return 'it' if v.lower().startswith('it') else 'en'
+            if v and v not in ('C', 'POSIX') and not v.startswith('C.'): return lang_of(v.split(':')[0])
     except Exception: pass
     return 'en'
 
@@ -410,7 +520,8 @@ class App:
         self.root = root; self.q = queue.Queue(); self.worker = None; self.status = None
         try: self.cfg = json.load(open(CFG))
         except Exception: self.cfg = {}
-        self.lang = self.cfg.get('lang') or system_lang()          # the system's language; the button's choice is remembered
+        self.lang = self.cfg.get('lang') or system_lang()          # the system's language; the menu's choice is remembered
+        if self.lang not in TXT: self.lang = 'en'
         root.configure(bg=BG); root.minsize(640, 0)
         st = ttk.Style(root); st.theme_use('clam')
         st.configure('P.Horizontal.TProgressbar', troughcolor='#0a1f45', background=YEL, bordercolor=BG,
@@ -444,7 +555,11 @@ class App:
         tt = tk.Frame(top, bg=BG); tt.pack(side='left')
         self.w_title = self.lbl(tt, 22, 'bold', YEL, anchor='w'); self.w_title.pack(anchor='w')
         self.w_sub = self.lbl(tt, 10, fg=MUTED, anchor='w'); self.w_sub.pack(anchor='w')
-        self.w_lang = self.button(top, self.toggle_lang, bg=PANEL, fg=INK, size=10); self.w_lang.pack(side='right')
+        self.w_lang = tk.Menubutton(top, font=(FONT, 10, 'bold'), bg=PANEL, fg=INK, activebackground=ORA, activeforeground='#1a1a1a',
+                                    relief='flat', bd=0, cursor='hand2', padx=14, pady=6)
+        m = tk.Menu(self.w_lang, tearoff=0, font=(FONT, 10), bg=PANEL, fg=INK, activebackground=ORA, activeforeground='#1a1a1a')
+        for code, name in LANGS: m.add_command(label=name, command=lambda c=code: self.set_lang(c))
+        self.w_lang['menu'] = m; self.w_lang.pack(side='right', anchor='n')
 
         self.body = tk.Frame(r, bg=BG, padx=20); self.body.pack(fill='both', expand=True)
         self.body.columnconfigure(0, weight=1)
@@ -508,7 +623,7 @@ class App:
     def refresh_texts(self):
         t = self.t; self.root.title(t['title'])
         self.w_title['text'] = t['title']; self.w_sub['text'] = t['sub']
-        self.w_lang['text'] = 'English' if self.lang == 'it' else 'Italiano'
+        self.w_lang['text'] = dict(LANGS)[self.lang] + '  ▾'
         self.w_s1['text'], self.w_s1h['text'], self.w_browse['text'] = t['s1'], t['s1h'], t['browse']
         self.w_s2['text'], self.w_s2h['text'], self.w_s3['text'] = t['s2'], t['s2h'], t['s3']
         self.w_recheck['text'] = t['recheck']
@@ -526,8 +641,8 @@ class App:
                 d['cb'].configure(state='disabled' if miss else 'normal')
         self.check_rom()
 
-    def toggle_lang(self):
-        self.lang = 'it' if self.lang == 'en' else 'en'; self.save_cfg(); self.refresh_texts()
+    def set_lang(self, code):
+        self.lang = code; self.save_cfg(); self.refresh_texts()
         if getattr(self, 'state', None): [self.set_step(i, s, quiet=True) for i, s in enumerate(self.state) if s != 'wait']
 
     def toggle_log(self):
