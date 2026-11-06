@@ -27,6 +27,39 @@ static const ActInfo ACT_INFO[A_COUNT] = {
     {"test", "Test (cabinet)"}, {"service", "Config DIP on/off"},
 };
 
+// Nintendo Switch: SDL maps the buttons by position (Xbox style: SDL "A" = the bottom button, labelled B on the
+// Switch). We remap them by label, so SDL "A" is the button with A printed on it, as everywhere else on the console;
+// the defaults below keep the same physical buttons as before (coin = bottom, Enter = right).
+inline int nin_swap(int b) {
+#ifdef __SWITCH__
+    if (b == SDL_CONTROLLER_BUTTON_A) return SDL_CONTROLLER_BUTTON_B; if (b == SDL_CONTROLLER_BUTTON_B) return SDL_CONTROLLER_BUTTON_A;
+    if (b == SDL_CONTROLLER_BUTTON_X) return SDL_CONTROLLER_BUTTON_Y; if (b == SDL_CONTROLLER_BUTTON_Y) return SDL_CONTROLLER_BUTTON_X;
+#endif
+    return b;
+}
+#ifdef __SWITCH__
+inline std::string nin_label_str(const std::string& in) {   // "a:b1,b:b0,x:b3,y:b2" -> "a:b0,b:b1,x:b2,y:b3" ("" = nothing to do)
+    std::string out;
+    std::map<std::string, std::string> sw = {{"a", "b"}, {"b", "a"}, {"x", "y"}, {"y", "x"}};
+    std::vector<std::string> parts; size_t st = 0;
+    for (size_t i = 0; i <= in.size(); i++) if (i == in.size() || in[i] == ',') { parts.push_back(in.substr(st, i - st)); st = i + 1; }
+    std::map<std::string, std::string> val;
+    for (auto& p : parts) { size_t c = p.find(':'); if (c != std::string::npos) val[p.substr(0, c)] = p.substr(c + 1); }
+    if (!val.count("a") || !val.count("b") || val["a"] == "b0") return "";     // already by label
+    for (size_t i = 0; i < parts.size(); i++) {
+        std::string p = parts[i]; size_t c = p.find(':');
+        if (i >= 2 && c != std::string::npos && sw.count(p.substr(0, c)) && val.count(sw[p.substr(0, c)])) p = p.substr(0, c + 1) + val[sw[p.substr(0, c)]];
+        out += (i ? "," : "") + p;
+    }
+    return out;
+}
+inline void nin_label_mapping(int joy) {
+    char* m = SDL_GameControllerMappingForGUID(SDL_JoystickGetDeviceGUID(joy)); if (!m) return;
+    std::string out = nin_label_str(m); SDL_free(m);
+    if (!out.empty()) SDL_GameControllerAddMapping(out.c_str());
+}
+#endif
+
 struct Config {
     int key[A_COUNT][2];                       // SDL scancode (0 = none), two keys per action
     int pad[A_COUNT];                          // SDL_GameControllerButton (-1 = none)
@@ -69,7 +102,7 @@ struct Config {
 #endif
 #endif
     }
-    void set(int a, int k1, int k2, int p) { key[a][0] = k1; key[a][1] = k2; pad[a] = p; }
+    void set(int a, int k1, int k2, int p) { key[a][0] = k1; key[a][1] = k2; pad[a] = nin_swap(p); }
 
     static std::string path() {
 #if defined(__WIIU__) || defined(__SWITCH__) || defined(__ANDROID__)
@@ -82,23 +115,26 @@ struct Config {
     void save() const {
         FILE* f = fopen(path().c_str(), "w"); if (!f) { fprintf(stderr, "cannot save %s\n", path().c_str()); return; }
         fprintf(f, "# Panic Park recompiled - settings (editable by hand or from the start screen)\n");
+        fprintf(f, "padmap=1\n");                       // controller buttons by label (Switch)
         for (int i = 0; i < A_COUNT; i++) fprintf(f, "%s_key1=%d\n%s_key2=%d\n%s_pad=%d\n", ACT_INFO[i].id, key[i][0], ACT_INFO[i].id, key[i][1], ACT_INFO[i].id, pad[i]);
         fprintf(f, "deadzone=%d\nsens=%d\ninvert=%d\naxis=%d\nfullscreen=%d\nres3d=%d\nwide=%d\nfps=%d\ntouch=%d\ntouchui=%d\ngpu=%d\ngame_lang=%d\nui_lang=%s\nskip_post=%d\nservice_dip=%d\n", deadzone, sens, invert, axis, fullscreen, res3d, wide, fps, touch, touchui, gpu, game_lang, ui_lang.c_str(), skip_post, service_dip);
         fclose(f);
     }
     bool load() {
         FILE* f = fopen(path().c_str(), "r"); if (!f) return false;
-        char line[256];
+        char line[256]; bool by_label = false;
         while (fgets(line, sizeof line, f)) {
             char* eq = strchr(line, '='); if (line[0] == '#' || !eq) continue; *eq = 0; int v = atoi(eq + 1); std::string k = line;
             for (int i = 0; i < A_COUNT; i++) {
                 std::string id = ACT_INFO[i].id;
                 if (k == id + "_key1") key[i][0] = v; else if (k == id + "_key2") key[i][1] = v; else if (k == id + "_pad") pad[i] = v;
             }
+            if (k == "padmap") by_label = v >= 1;
             if (k == "deadzone") deadzone = v; else if (k == "sens") sens = v; else if (k == "invert") invert = v; else if (k == "axis") axis = v;
             else if (k == "fullscreen") fullscreen = v; else if (k == "res3d") res3d = v < 0 ? 0 : v > 2 ? 2 : v; else if (k == "wide") wide = v; else if (k == "fps") fps = v; else if (k == "touch") touch = v ? 1 : 0; else if (k == "gpu") gpu = v ? 1 : 0; else if (k == "touchui") touchui = v ? 1 : 0; else if (k == "game_lang") game_lang = v;
             else if (k == "ui_lang") { std::string t = eq + 1; while (!t.empty() && (t.back() == '\n' || t.back() == '\r' || t.back() == ' ')) t.pop_back(); ui_lang = t; } else if (k == "skip_post") skip_post = v; else if (k == "service_dip") service_dip = v;
         }
+        if (!by_label) for (int i = 0; i < A_COUNT; i++) pad[i] = nin_swap(pad[i]);     // file saved before the remap: same physical buttons
         fclose(f); deadzone = deadzone < 0 ? 0 : deadzone > 60 ? 60 : deadzone; sens = sens < 20 ? 20 : sens > 100 ? 100 : sens; return true;
     }
 };
@@ -108,6 +144,9 @@ struct Pads {
     std::vector<SDL_GameController*> list;
     void rescan() {
         for (auto c : list) SDL_GameControllerClose(c); list.clear();
+#ifdef __SWITCH__
+        for (int i = 0; i < SDL_NumJoysticks(); i++) nin_label_mapping(i);
+#endif
         for (int i = 0; i < SDL_NumJoysticks(); i++) if (SDL_IsGameController(i)) if (SDL_GameController* c = SDL_GameControllerOpen(i)) list.push_back(c);
     }
     bool button(int b) const { if (b < 0) return false; for (auto c : list) if (SDL_GameControllerGetButton(c, (SDL_GameControllerButton)b)) return true; return false; }

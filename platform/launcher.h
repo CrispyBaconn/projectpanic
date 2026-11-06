@@ -14,6 +14,11 @@ static std::string ui_dir() {
     return "ui";
 }
 
+#ifdef __SWITCH__
+#define PAD_LR "L R"
+#else
+#define PAD_LR "LB RB"
+#endif
 // readable name of the controller button
 static std::string pad_label(int b) {
     switch (b) {
@@ -433,8 +438,8 @@ static bool launcher(SDL_Window* win, SDL_Renderer* ren, InputState& is, bool in
                 U.rrect(PX + PW - 9, sby, 5, sbh, 2.5f, alpha(WHITE, 0.5f), alpha(WHITE, 0.3f));
             }
             if (dev == D_POINTER) hint_bar({});
-            else if (tab == 0) hint_bar({{pad_or_key("A", T("key_enter").c_str()), T("h_assign")}, {pad_or_key("LB RB", "Q E"), T("h_tabs")}, {pad_or_key("B", "Esc"), T("back")}});
-            else hint_bar({{pad_or_key("A", T("key_enter").c_str()), T("h_change")}, {pad_or_key("LB RB", "Q E"), T("h_tabs")}, {pad_or_key("B", "Esc"), T("back")}});
+            else if (tab == 0) hint_bar({{pad_or_key("A", T("key_enter").c_str()), T("h_assign")}, {pad_or_key(PAD_LR, "Q E"), T("h_tabs")}, {pad_or_key("B", "Esc"), T("back")}});
+            else hint_bar({{pad_or_key("A", T("key_enter").c_str()), T("h_change")}, {pad_or_key(PAD_LR, "Q E"), T("h_tabs")}, {pad_or_key("B", "Esc"), T("back")}});
             if (dev == D_POINTER) U.text(U.body, 24, H - 26, T(tab == 0 ? "h_touch_bind" : "h_touch"), 21, GREY, GREY, INK, true, false, 0, W - 48);
 
             // ---- "press a key" window
