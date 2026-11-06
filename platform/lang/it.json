@@ -35,6 +35,7 @@
   "post": "Salta il POST all'avvio (DIP 7)",
   "svc": "DIP configurazione acceso all'avvio",
   "svc_on": "sì (modalità servizio)",
+  "volume": "Volume",
   "ui_lang": "Lingua dei menu",
   "game_lang": "Lingua del gioco",
   "game_lang_keep": "quella scelta nel gioco",

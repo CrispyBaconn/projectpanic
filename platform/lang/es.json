@@ -35,6 +35,7 @@
   "post": "Saltar el POST al arrancar (DIP 7)",
   "svc": "DIP de servicio activo al arrancar",
   "svc_on": "sí (modo servicio)",
+  "volume": "Volumen",
   "ui_lang": "Idioma del menú",
   "game_lang": "Idioma del juego",
   "game_lang_keep": "como esté en el juego",

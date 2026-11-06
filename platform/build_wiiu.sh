@@ -5,7 +5,11 @@
 # Variables: JOBS (parallel compilations, default = number of cores), OPT (default -O2)
 set -e
 cd "$(dirname "$0")/.."
-python3 tools/make_icons.py || true                  # app icons from platform/ui/icon.png (if you have it)
+if command -v python3 >/dev/null 2>&1; then python3 tools/make_icons.py || true; fi   # app icons from platform/ui/icon.png (if you have it)
+# a build folder made from another path (WSL /mnt/c/... vs the devkitPro bash /c/...) has dependency files that point
+# to the old path: make would stop with "No rule to make target"; start again from clean
+if [ -d build_wiiu ] && [ "$(cat build_wiiu/.srcdir 2>/dev/null)" != "$(pwd)" ]; then rm -rf build_wiiu; fi
+mkdir -p build_wiiu && pwd > build_wiiu/.srcdir
 : "${DEVKITPRO:=/opt/devkitpro}"; export DEVKITPRO
 export DEVKITPPC="${DEVKITPPC:-$DEVKITPRO/devkitPPC}"
 [ -f "$DEVKITPRO/wut/share/wut_rules" ] || { echo "wut missing: sudo dkp-pacman -S wiiu-dev wiiu-sdl2"; exit 1; }

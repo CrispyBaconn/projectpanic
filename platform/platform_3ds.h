@@ -306,16 +306,18 @@ static void audio_push(const int16_t* s, size_t frames) {
 namespace n3ds {
 
 struct Cfg {                                           // sdmc:/3ds/panicprk/panicprk.ini
-    std::string ui_lang; int game_lang = -1, skip_post = 0, service_dip = 0, stats = 1;
+    std::string ui_lang; int game_lang = -1, skip_post = 1, service_dip = 0, stats = 1, volume = 100, ver = 1;
     static std::string path() { return std::string(S23_APP_DIR) + "/panicprk.ini"; }
     void load() {
         FILE* f = fopen(path().c_str(), "r"); if (!f) return; char l[256];
         while (fgets(l, sizeof l, f)) { char* eq = strchr(l, '='); if (!eq) continue; *eq = 0; std::string k = l, v = eq + 1; while (!v.empty() && (v.back() == '\n' || v.back() == '\r')) v.pop_back();
             if (k == "ui_lang") ui_lang = v; else if (k == "game_lang") game_lang = atoi(v.c_str()); else if (k == "skip_post") skip_post = atoi(v.c_str());
-            else if (k == "service_dip") service_dip = atoi(v.c_str()); else if (k == "stats") stats = atoi(v.c_str()); }
+            else if (k == "service_dip") service_dip = atoi(v.c_str()); else if (k == "stats") stats = atoi(v.c_str());
+            else if (k == "volume") volume = std::max(0, std::min(100, atoi(v.c_str()))); else if (k == "cfgver") ver = atoi(v.c_str()); }
         fclose(f);
+        if (ver < 2) skip_post = 1;                    // older files saved the old default (POST shown)
     }
-    void save() const { FILE* f = fopen(path().c_str(), "w"); if (!f) return; fprintf(f, "ui_lang=%s\ngame_lang=%d\nskip_post=%d\nservice_dip=%d\nstats=%d\n", ui_lang.c_str(), game_lang, skip_post, service_dip, stats); fclose(f); }
+    void save() const { FILE* f = fopen(path().c_str(), "w"); if (!f) return; fprintf(f, "ui_lang=%s\ngame_lang=%d\nskip_post=%d\nservice_dip=%d\nstats=%d\nvolume=%d\ncfgver=2\n", ui_lang.c_str(), game_lang, skip_post, service_dip, stats, volume); fclose(f); }
 };
 static Cfg cfg;
 static std::string T(const char* k) { return i18n::tru(k); }
@@ -369,25 +371,29 @@ static void on_oom() {                                  // new failed (without e
 static int settings_row = 0;
 static bool settings(u32 kd, const touchPosition& tp, bool touched) {
     static const char* GL[8] = {"JPN", "ENG", "GER", "FRA", "SPA", "POR", "ITA", "KOR"};
-    const int N = 6;
+    const int N = 7, RH = 29;                          // 6 settings + back
     if (kd & KEY_DOWN) settings_row = (settings_row + 1) % N; if (kd & KEY_UP) settings_row = (settings_row + N - 1) % N;
     int d = (kd & (KEY_RIGHT | KEY_A)) ? 1 : (kd & KEY_LEFT) ? -1 : 0;
-    int hit = -1; if (touched && tp.py >= 34 && tp.py < 34 + N * 32) hit = (tp.py - 34) / 32;
-    if (hit >= 0) { settings_row = hit; d = tp.px < 160 && hit < 5 ? -1 : 1; }
+    int hit = -1; if (touched && tp.py >= 34 && tp.py < 34 + N * RH) hit = (tp.py - 34) / RH;
+    if (hit >= 0) { settings_row = hit; d = tp.px < 160 && hit < N - 1 ? -1 : 1; }
     if (d && settings_row == 0) { auto& L = i18n::all(); if (!L.empty()) { int k = i18n::cur(); k = (k < 0 ? 0 : (k + d + (int)L.size()) % (int)L.size()); cfg.ui_lang = L[k].code; i18n::select(cfg.ui_lang); } }
-    if (d && settings_row == 1) cfg.game_lang = (cfg.game_lang + 1 + d + 9) % 9 - 1;
-    if (d && settings_row == 2) cfg.skip_post ^= 1;
-    if (d && settings_row == 3) cfg.service_dip ^= 1;
-    if (d && settings_row == 4) cfg.stats ^= 1;
-    const bool back = (kd & KEY_B) || (d && settings_row == 5);
+    if (d && settings_row == 1) cfg.volume = std::max(0, std::min(100, cfg.volume + 10 * d));
+    if (d && settings_row == 2) cfg.game_lang = (cfg.game_lang + 1 + d + 9) % 9 - 1;
+    if (d && settings_row == 3) cfg.skip_post ^= 1;
+    if (d && settings_row == 4) cfg.service_dip ^= 1;
+    if (d && settings_row == 5) cfg.stats ^= 1;
+    const bool back = (kd & KEY_B) || (d && settings_row == N - 1);
     text(T("settings"), 160, 4, 0.8f, col(255, 214, 40), C2D_AlignCenter);
-    const std::string vals[5] = { i18n::cur_name_u(), cfg.game_lang < 0 ? T("game_lang_keep") : GL[cfg.game_lang & 7], cfg.skip_post ? T("yes") : T("no"), cfg.service_dip ? T("yes") : T("no"), cfg.stats ? T("yes") : T("no") };
-    const char* keys[5] = {"ui_lang", "game_lang", "post", "svc", "stats"};
+    const std::string vals[6] = { i18n::cur_name_u(), std::to_string(cfg.volume) + " %", cfg.game_lang < 0 ? T("game_lang_keep") : GL[cfg.game_lang & 7], cfg.skip_post ? T("yes") : T("no"), cfg.service_dip ? T("yes") : T("no"), cfg.stats ? T("yes") : T("no") };
+    const char* keys[6] = {"ui_lang", "volume", "game_lang", "post", "svc", "stats"};
     for (int i = 0; i < N; i++) {
-        const float y = 34 + i * 32; const bool s = settings_row == i;
-        C2D_DrawRectSolid(6, y, 0.4f, 308, 29, s ? col(44, 100, 190) : col(20, 36, 80));
-        if (i < 5) { text(T(keys[i]), 12, y + 6, 0.48f, s ? col(255, 230, 80) : col(235, 240, 255)); text(vals[i], 308, y + 6, 0.48f, col(200, 225, 255), C2D_AlignRight); }
-        else text(T("back"), 160, y + 6, 0.55f, s ? col(255, 230, 80) : col(235, 240, 255), C2D_AlignCenter);
+        const float y = 34 + i * RH; const bool s = settings_row == i;
+        C2D_DrawRectSolid(6, y, 0.4f, 308, RH - 3, s ? col(44, 100, 190) : col(20, 36, 80));
+        if (i == 1) {                                  // volume: bar
+            C2D_DrawRectSolid(150, y + 10, 0.45f, 100, 6, col(30, 44, 80)); C2D_DrawRectSolid(150, y + 10, 0.46f, (float)cfg.volume, 6, col(255, 200, 40));
+        }
+        if (i < N - 1) { text(T(keys[i]), 12, y + 5, 0.48f, s ? col(255, 230, 80) : col(235, 240, 255)); text(vals[i], 308, y + 5, 0.48f, col(200, 225, 255), C2D_AlignRight); }
+        else text(T("back"), 160, y + 5, 0.55f, s ? col(255, 230, 80) : col(235, 240, 255), C2D_AlignCenter);
     }
     if (back) { cfg.save(); return false; }
     return true;
@@ -463,7 +469,7 @@ static void run() {
         input(kd, kh, want_menu, coin_touch);
         if (want_menu) {                                   // pause: emulation time stops
             emu_pause(true); g_in.p1 = 0; g_in.coin1 = 0;
-            const int r = menu(true);
+            const int r = menu(true); g_volume = cfg.volume;
             apply_lang(); apply_game_lang(true);
             emu_pause(false); if (r == 1) break;
             continue;

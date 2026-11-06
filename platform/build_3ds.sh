@@ -5,7 +5,11 @@
 # Variables: JOBS (parallel compilations, default = number of cores), OPT (default -O2)
 set -e
 cd "$(dirname "$0")/.."
-python3 tools/make_icons.py || true                  # app icons from platform/ui/icon.png (if you have it)
+if command -v python3 >/dev/null 2>&1; then python3 tools/make_icons.py || true; fi   # app icons from platform/ui/icon.png (if you have it)
+# a build folder made from another path (WSL /mnt/c/... vs the devkitPro bash /c/...) has dependency files that point
+# to the old path: make would stop with "No rule to make target"; start again from clean
+if [ -d build_3ds ] && [ "$(cat build_3ds/.srcdir 2>/dev/null)" != "$(pwd)" ]; then rm -rf build_3ds; fi
+mkdir -p build_3ds && pwd > build_3ds/.srcdir
 : "${DEVKITPRO:=/opt/devkitpro}"; export DEVKITPRO
 export DEVKITARM="${DEVKITARM:-$DEVKITPRO/devkitARM}"
 [ -f "$DEVKITARM/3ds_rules" ] || { echo "devkitARM missing: sudo dkp-pacman -S 3ds-dev"; exit 1; }

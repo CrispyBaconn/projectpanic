@@ -35,6 +35,7 @@
   "post": "Skip POST at boot (DIP 7)",
   "svc": "Service DIP on at boot",
   "svc_on": "yes (service mode)",
+  "volume": "Volume",
   "ui_lang": "Menu language",
   "game_lang": "Game language",
   "game_lang_keep": "as set in the game",

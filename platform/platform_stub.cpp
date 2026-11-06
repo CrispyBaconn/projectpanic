@@ -617,8 +617,16 @@ static void wav_header() {
     long pos = ftell(g_wav); fseek(g_wav, 0, SEEK_SET); fwrite(h, 1, 44, g_wav); if (pos > 44) fseek(g_wav, pos, SEEK_SET);
 }
 static void (*g_audio_push)(const int16_t*, size_t) = nullptr;   // 3DS: ndsp
+static std::atomic<int> g_volume{100};                                // volume of the output (0..100 %, settings)
 static void audio_sink(const int16_t* s, size_t frames) {
     if (g_wav) { fwrite(s, 4, frames, g_wav); g_wav_bytes += (uint32_t)(frames * 4); wav_header(); }
+    const int vol = g_volume.load();
+    static thread_local std::vector<int16_t> vb;
+    if (vol < 100) {                                                  // the WAV file keeps the original level
+        vb.resize(frames * 2); const int k = vol * vol * 65536 / 10000;    // perceived loudness: square curve
+        for (size_t i = 0; i < frames * 2; i++) vb[i] = (int16_t)((s[i] * k) >> 16);
+        s = vb.data();
+    }
     if (g_audio_push) g_audio_push(s, frames);
 #ifdef USE_SDL
     uint32_t dev = g_adev.load();
@@ -1220,7 +1228,7 @@ static void run_window() {
         if (uint32_t d = g_adev.load()) SDL_PauseAudioDevice(d, 1);
         const int gpu_before = is.cfg.gpu;
         const bool go = launcher(win, ren, is, true);
-        full = is.cfg.fullscreen;
+        full = is.cfg.fullscreen; g_volume = is.cfg.volume;
         SDL_RenderSetLogicalSize(ren, is.cfg.wide ? 854 : 640, 480);
 #if SDL_VERSION_ATLEAST(2, 0, 18)
         SDL_RenderSetVSync(ren, FPS_LIST[is.cfg.fps % FPS_N] == 0 ? 1 : 0);
@@ -1637,7 +1645,7 @@ int main(int argc, char** argv) {
             SDL_Quit(); return 0;
         }
         if (!getenv("S23_DSW")) { if (g_is.cfg.skip_post) g_dsw &= ~2u; if (g_is.cfg.service_dip) g_dsw &= ~1u; }
-        g_is.service_dip = !(g_dsw & 1);
+        g_is.service_dip = !(g_dsw & 1); g_volume = g_is.cfg.volume;
         g_game_lang = g_is.cfg.game_lang; apply_game_lang(false);
         { static const char* LC[8] = {"ja", "en", "de", "fr", "es", "pt", "it", "ko"}; game_text_patch(g_game_lang >= 0 ? LC[g_game_lang & 7] : i18n::cur_code()); }
         printf("final DSW=%02x (skip POST: %s, config: %s)\n", g_dsw, (g_dsw & 2) ? "no" : "yes", Config::path().c_str()); fflush(stdout);
@@ -1652,6 +1660,7 @@ int main(int argc, char** argv) {
     if (want_window) {
         n3ds::audio_init(); g_audio_push = n3ds::audio_push;
         if (n3ds::menu(false) == 1) { console_stop_threads(); fflush(stdout); C2D_Fini(); C3D_Fini(); gfxExit(); return 0; }
+        g_volume = n3ds::cfg.volume;
         if (!getenv("S23_DSW")) { if (n3ds::cfg.skip_post) g_dsw &= ~2u; if (n3ds::cfg.service_dip) g_dsw &= ~1u; }
         n3ds::apply_lang(); apply_game_lang(false);
         printf("final DSW=%02x\n", g_dsw); fflush(stdout);

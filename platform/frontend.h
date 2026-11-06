@@ -76,7 +76,8 @@ struct Config {
     int touch = 1;                             // touch: 1 = trackpad (the finger moves the lever, which stays where it is), 0 = joystick (returns to centre)
     int touchui = 1;                           // on-screen buttons (coin, service, menu) on touchscreens: 1 yes, 0 no
     int gpu = 1;                               // 1 = 3D drawn by the graphics card (OpenGL), 0 = by the CPU
-    int skip_post = 0;                         // DIP 7 (skip POST)
+    int skip_post = 1;                         // DIP 7 (skip POST): on by default, the game starts at once
+    int volume = 100;                          // sound volume, %
     int service_dip = 0;                       // Service DIP on at startup
     Config() { defaults(); }
     void defaults() {
@@ -91,7 +92,7 @@ struct Config {
         set(A_ENTER, SDL_SCANCODE_Z, SDL_SCANCODE_SPACE, SDL_CONTROLLER_BUTTON_B);
         set(A_TEST, SDL_SCANCODE_F2, 0, SDL_CONTROLLER_BUTTON_LEFTSHOULDER);
         set(A_SERVICE, SDL_SCANCODE_F3, 0, SDL_CONTROLLER_BUTTON_RIGHTSHOULDER);
-        deadzone = 12; sens = 100; invert = 0; axis = 0; fullscreen = 0; res3d = 1; wide = 0; game_lang = -1; fps = 0; skip_post = 0; service_dip = 0; gpu = 1; touchui = 1;
+        deadzone = 12; sens = 100; invert = 0; axis = 0; fullscreen = 0; res3d = 1; wide = 0; game_lang = -1; fps = 0; skip_post = 1; volume = 100; service_dip = 0; gpu = 1; touchui = 1;
 #if defined(__WIIU__) || defined(__SWITCH__) || defined(__ANDROID__)
 #if !defined(__SWITCH__)
         gpu = 0;                                                 // GPU not yet tested on Wii U (no OpenGL) and phones
@@ -117,12 +118,12 @@ struct Config {
         fprintf(f, "# Panic Park recompiled - settings (editable by hand or from the start screen)\n");
         fprintf(f, "padmap=1\n");                       // controller buttons by label (Switch)
         for (int i = 0; i < A_COUNT; i++) fprintf(f, "%s_key1=%d\n%s_key2=%d\n%s_pad=%d\n", ACT_INFO[i].id, key[i][0], ACT_INFO[i].id, key[i][1], ACT_INFO[i].id, pad[i]);
-        fprintf(f, "deadzone=%d\nsens=%d\ninvert=%d\naxis=%d\nfullscreen=%d\nres3d=%d\nwide=%d\nfps=%d\ntouch=%d\ntouchui=%d\ngpu=%d\ngame_lang=%d\nui_lang=%s\nskip_post=%d\nservice_dip=%d\n", deadzone, sens, invert, axis, fullscreen, res3d, wide, fps, touch, touchui, gpu, game_lang, ui_lang.c_str(), skip_post, service_dip);
+        fprintf(f, "deadzone=%d\nsens=%d\ninvert=%d\naxis=%d\nfullscreen=%d\nres3d=%d\nwide=%d\nfps=%d\ntouch=%d\ntouchui=%d\ngpu=%d\ngame_lang=%d\nui_lang=%s\nskip_post=%d\nservice_dip=%d\nvolume=%d\ncfgver=2\n", deadzone, sens, invert, axis, fullscreen, res3d, wide, fps, touch, touchui, gpu, game_lang, ui_lang.c_str(), skip_post, service_dip, volume);
         fclose(f);
     }
     bool load() {
         FILE* f = fopen(path().c_str(), "r"); if (!f) return false;
-        char line[256]; bool by_label = false;
+        char line[256]; bool by_label = false; int ver = 1;
         while (fgets(line, sizeof line, f)) {
             char* eq = strchr(line, '='); if (line[0] == '#' || !eq) continue; *eq = 0; int v = atoi(eq + 1); std::string k = line;
             for (int i = 0; i < A_COUNT; i++) {
@@ -133,8 +134,10 @@ struct Config {
             if (k == "deadzone") deadzone = v; else if (k == "sens") sens = v; else if (k == "invert") invert = v; else if (k == "axis") axis = v;
             else if (k == "fullscreen") fullscreen = v; else if (k == "res3d") res3d = v < 0 ? 0 : v > 2 ? 2 : v; else if (k == "wide") wide = v; else if (k == "fps") fps = v; else if (k == "touch") touch = v ? 1 : 0; else if (k == "gpu") gpu = v ? 1 : 0; else if (k == "touchui") touchui = v ? 1 : 0; else if (k == "game_lang") game_lang = v;
             else if (k == "ui_lang") { std::string t = eq + 1; while (!t.empty() && (t.back() == '\n' || t.back() == '\r' || t.back() == ' ')) t.pop_back(); ui_lang = t; } else if (k == "skip_post") skip_post = v; else if (k == "service_dip") service_dip = v;
+            else if (k == "volume") volume = std::max(0, std::min(100, v)); else if (k == "cfgver") ver = v;
         }
         if (!by_label) for (int i = 0; i < A_COUNT; i++) pad[i] = nin_swap(pad[i]);     // file saved before the remap: same physical buttons
+        if (ver < 2) skip_post = 1;                      // older files saved the old default (POST shown): now skipped by default
         fclose(f); deadzone = deadzone < 0 ? 0 : deadzone > 60 ? 60 : deadzone; sens = sens < 20 ? 20 : sens > 100 ? 100 : sens; return true;
     }
 };

@@ -35,6 +35,7 @@
   "post": "POST beim Start überspringen (DIP 7)",
   "svc": "Service-DIP beim Start an",
   "svc_on": "ja (Service-Modus)",
+  "volume": "Lautstärke",
   "ui_lang": "Menüsprache",
   "game_lang": "Spielsprache",
   "game_lang_keep": "wie im Spiel eingestellt",

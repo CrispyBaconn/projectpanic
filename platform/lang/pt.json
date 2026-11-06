@@ -35,6 +35,7 @@
   "post": "Pular o POST na inicialização (DIP 7)",
   "svc": "DIP de serviço ligado na inicialização",
   "svc_on": "sim (modo serviço)",
+  "volume": "Volume",
   "ui_lang": "Idioma do menu",
   "game_lang": "Idioma do jogo",
   "game_lang_keep": "como definido no jogo",

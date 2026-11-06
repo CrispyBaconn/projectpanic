@@ -35,6 +35,7 @@
   "post": "启动时跳过 POST (DIP 7)",
   "svc": "启动时开启服务 DIP",
   "svc_on": "是 (服务模式)",
+  "volume": "音量",
   "ui_lang": "菜单语言",
   "game_lang": "游戏语言",
   "game_lang_keep": "按游戏内设置",

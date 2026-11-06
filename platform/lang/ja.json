@@ -35,6 +35,7 @@
   "post": "起動時のPOSTを省略 (DIP 7)",
   "svc": "起動時にサービスDIPをオン",
   "svc_on": "はい (サービスモード)",
+  "volume": "音量",
   "ui_lang": "メニューの言語",
   "game_lang": "ゲームの言語",
   "game_lang_keep": "ゲームの設定のまま",

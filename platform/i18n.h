@@ -34,7 +34,7 @@ inline const std::map<std::string, std::string>& builtin() {
         {"gpu", "3D rendering"}, {"gpu_on", "graphics card (OpenGL)"}, {"gpu_off", "processor (CPU)"},
         {"fps", "Screen refresh"}, {"fps_vsync", "same as monitor (VSync)"}, {"fps_free", "unlimited"},
         {"wide", "Aspect ratio (experimental)"}, {"wide_169", "16:9 widescreen"}, {"wide_43", "4:3 original"},
-        {"post", "Skip POST at boot (DIP 7)"}, {"svc", "Service DIP on at boot"}, {"svc_on", "yes (service mode)"},
+        {"post", "Skip POST at boot (DIP 7)"}, {"svc", "Service DIP on at boot"}, {"svc_on", "yes (service mode)"}, {"volume", "Volume"},
         {"ui_lang", "Menu language"}, {"game_lang", "Game language"}, {"game_lang_keep", "as set in the game"},
         {"yes", "yes"}, {"no", "no"},
         {"reset", "Restore default settings"}, {"quit", "Quit"},

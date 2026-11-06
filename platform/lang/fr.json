@@ -35,6 +35,7 @@
   "post": "Passer le POST au démarrage (DIP 7)",
   "svc": "DIP service actif au démarrage",
   "svc_on": "oui (mode service)",
+  "volume": "Volume",
   "ui_lang": "Langue du menu",
   "game_lang": "Langue du jeu",
   "game_lang_keep": "comme réglée dans le jeu",

@@ -68,7 +68,7 @@ static bool launcher(SDL_Window* win, SDL_Renderer* ren, InputState& is, bool in
     // ---------------------------------------------------------------- settings rows
     enum Kind { K_BIND, K_TOGGLE, K_CYCLE, K_SLIDER, K_ACTION };
     struct Row { Kind k; std::string label; int act = 0; bool* dummy = nullptr; int* iv = nullptr; int lo = 0, hi = 0, step = 1; std::string val; bool on = false; int id = 0; };
-    enum { R_DZ = 100, R_SENS, R_INV, R_AXIS, R_TOUCHUI, R_FS, R_RES, R_GPU, R_FPS, R_WIDE, R_UILANG, R_GAMELANG, R_POST, R_SVC, R_RESET };
+    enum { R_DZ = 100, R_SENS, R_INV, R_AXIS, R_TOUCHUI, R_FS, R_RES, R_GPU, R_FPS, R_WIDE, R_UILANG, R_GAMELANG, R_POST, R_SVC, R_VOL, R_RESET };
     const char* TABS[4] = {"tab_controls", "tab_stick", "tab_video", "tab_game"};
     auto rows_of = [&](int tb) {
         std::vector<Row> v;
@@ -92,6 +92,7 @@ static bool launcher(SDL_Window* win, SDL_Renderer* ren, InputState& is, bool in
             cyc(R_WIDE, "wide", c.wide ? T("wide_169") : T("wide_43"));
         }
         if (tb == 3) {
+            sld(R_VOL, "volume", &c.volume, 0, 100, 5);
             cyc(R_UILANG, "ui_lang", i18n::cur_name_u());
             cyc(R_GAMELANG, "game_lang", c.game_lang < 0 ? T("game_lang_keep") : GL[c.game_lang & 7]);
             tog(R_POST, "post", c.skip_post); tog(R_SVC, "svc", c.service_dip);
@@ -104,6 +105,7 @@ static bool launcher(SDL_Window* win, SDL_Renderer* ren, InputState& is, bool in
         switch (r.id) {
             case R_DZ: c.deadzone = std::max(0, std::min(60, c.deadzone + 2 * s)); break;
             case R_SENS: c.sens = std::max(20, std::min(100, c.sens + 5 * s)); break;
+            case R_VOL: c.volume = std::max(0, std::min(100, c.volume + 5 * s)); break;
             case R_INV: c.invert = !c.invert; break;  case R_AXIS: c.axis = !c.axis; break;
             case R_TOUCHUI: c.touchui = !c.touchui; break;  case R_FS: set_fs(!c.fullscreen); break;
             case R_RES: c.res3d = (c.res3d + s + 3) % 3; break;  case R_GPU: c.gpu = !c.gpu; break;
