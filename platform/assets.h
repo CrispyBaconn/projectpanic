@@ -9,6 +9,7 @@
 #include <string>
 #include <vector>
 #include <cstdlib>
+#include <algorithm>
 #ifdef _WIN32
 #ifndef WIN32_LEAN_AND_MEAN
 #define WIN32_LEAN_AND_MEAN
@@ -58,14 +59,23 @@ inline const uint8_t* map_file(const std::string& p, size_t& n) {
 #ifdef __3DS__
     // 3DS: the normal heap is at most 96 MB; the remaining memory is "linear": the files that fit go there
     uint8_t* v = linearSpaceFree() > (u32)sz + (3u << 20) ? (uint8_t*)linearAlloc((size_t)sz) : nullptr;
-    if (v) printf("asset %s: in linear memory\n", p.c_str()); else v = (uint8_t*)malloc((size_t)sz);
-    if (!v) { fclose(f); return nullptr; }
+    bool lin = v != nullptr;
+    if (lin) printf("asset %s: in linear memory\n", p.c_str()); else v = (uint8_t*)malloc((size_t)sz);
+    if (!v && linearSpaceFree() > (u32)sz) { v = (uint8_t*)linearAlloc((size_t)sz); lin = v != nullptr; }   // last try, without margin
+    if (!v) { printf("asset %s: %ld bytes, no memory (heap and linear memory full)\n", p.c_str(), sz); fclose(f); return nullptr; }
 #else
     uint8_t* v = (uint8_t*)malloc((size_t)sz); if (!v) { fclose(f); return nullptr; }
 #endif
     static std::vector<char> buf(1 << 20); setvbuf(f, buf.data(), _IOFBF, buf.size());
-    size_t k = fread(v, 1, (size_t)sz, f); fclose(f);
+    size_t k = 0;
+    while (k < (size_t)sz) { size_t r = fread(v + k, 1, std::min<size_t>((size_t)sz - k, 1 << 20), f); if (!r) break; k += r; }
+    fclose(f);
+#ifdef __3DS__
+    if (k != (size_t)sz) { printf("asset %s: read only %zu of %ld bytes (SD read error or damaged file: copy it again)\n", p.c_str(), k, sz);
+                           if (lin) linearFree(v); else free(v); return nullptr; }
+#else
     if (k != (size_t)sz) { free(v); return nullptr; }
+#endif
     n = (size_t)sz; return v;
 #else
     int fd = open(p.c_str(), O_RDONLY); if (fd < 0) return nullptr;
@@ -89,8 +99,8 @@ inline const uint8_t* get(const std::string& name, size_t& n, const std::functio
 #ifdef __3DS__
     {   // 3DS: no conversion from the ROMs (it doesn't fit in memory): the assets must come ready-made from the PC
         FILE* f = fopen(p.c_str(), "rb"); const bool exists = f != nullptr; if (f) fclose(f);
-        printf("asset %s: %s\n", p.c_str(), exists ? "NOT ENOUGH MEMORY to load it" : "MISSING (copy the assets folder from the PC)"); fflush(stdout);
-        last_error() = name + (exists ? ": not enough memory" : ": file missing from assets/");
+        printf("asset %s: %s\n", p.c_str(), exists ? "could not be loaded (reason above)" : "MISSING (copy the assets folder from the PC)"); fflush(stdout);
+        last_error() = name + (exists ? ": could not be loaded (see log.txt)" : ": file missing from assets/");
         (void)build; return nullptr;
     }
 #endif
