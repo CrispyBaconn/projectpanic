@@ -33,3 +33,4 @@ __pycache__/
 platform/SDL2-src/
 panicprkrom/
 .rom_extract/
+tools/llvm-mingw-*/

@@ -10,12 +10,14 @@ Not affiliated with Bandai Namco. License: BSD-3-Clause (parts derived from MAME
 ## Easy way: Project Panic Builder
 
 A window that does everything below for you: choose your `panicprk.7z` (or `.zip`), tick the devices, press **BUILD**
-and follow the percentage. Devices whose tools are not installed are greyed out, with the command to install them.
+and follow the percentage. Devices whose tools are missing are greyed out, with what to install.
 
-- **Windows**: double-click `ProjectPanicBuilder.bat` (it runs inside WSL; needs Windows 11 or WSLg).
-- **Linux / WSL**: `sh tools/builder.sh`
+- **Windows** (no WSL needed): install [Python 3](https://www.python.org/downloads/) (tick "Add python.exe to PATH"),
+  then double-click `ProjectPanicBuilder.bat`. The first Windows build downloads the compiler (LLVM-MinGW) by itself.
+  Switch, Wii U and 3DS also work from Windows with the [devkitPro installer](https://devkitpro.org/wiki/Getting_Started);
+  Linux and Android builds need Linux or WSL.
+- **Linux / WSL**: `sudo apt install python3-tk p7zip-full`, then `sh tools/builder.sh`.
 
-The first time install Tk for Python in WSL/Linux: `sudo apt install python3-tk p7zip-full`.
 The results end up in `dist/`, as with the manual steps.
 
 ## 1. Generate the code (all platforms)
