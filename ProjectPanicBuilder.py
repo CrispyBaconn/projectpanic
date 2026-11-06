@@ -44,7 +44,7 @@ TXT = {
             bad_rom='The archive does not contain the Panic Park ROMs (pnp2vera.ic1 / pnp2vera.ic2).',
             no7z='Could not open the .7z archive: install 7-Zip (7-zip.org, or  sudo apt install p7zip-full)',
             done='Finished! The files are in the dist folder.', failed='Something went wrong: open "Show details".',
-            stopped='Stopped.', open='Open the dist folder', a_setup='first time: downloads Java and the Android SDK (~3 GB)',
+            stopped='Stopped.', open='Open the dist folder', a_setup='first time: downloads Java and the Android SDK (~3 GB)', a_studio='uses Android Studio (its Java and SDK)', a_add='adds the missing SDK parts', a_ready='SDK already installed',
             n3ds='needs the assets folder made by the PC version: build Windows or Linux too and start the game once',
             confirm_stop='Stop the build?', reuse='already extracted: using panicprkrom/', no_file='file not found', recheck='Check again', w_dl='first time: downloads the compiler (LLVM-MinGW, ~150 MB)',
             no_elftools='pyelftools is missing:  sudo apt install python3-pyelftools'),
@@ -58,7 +58,7 @@ TXT = {
             bad_rom="L'archivio non contiene le ROM di Panic Park (pnp2vera.ic1 / pnp2vera.ic2).",
             no7z='Impossibile aprire l’archivio .7z: installa 7-Zip (7-zip.org, oppure  sudo apt install p7zip-full)',
             done='Finito! I file sono nella cartella dist.', failed='Qualcosa è andato storto: apri "Mostra dettagli".',
-            stopped='Fermato.', open='Apri la cartella dist', a_setup='la prima volta scarica Java e l’SDK Android (~3 GB)',
+            stopped='Fermato.', open='Apri la cartella dist', a_setup='la prima volta scarica Java e l’SDK Android (~3 GB)', a_studio='usa Android Studio (il suo Java e il suo SDK)', a_add='aggiunge le parti mancanti dell’SDK', a_ready='SDK già installato',
             n3ds='serve la cartella assets creata dalla versione PC: compila anche Windows o Linux e avvia il gioco una volta',
             confirm_stop='Fermare la compilazione?', reuse='già estratte: uso panicprkrom/', no_file='file non trovato', recheck='Ricontrolla', w_dl='la prima volta scarica il compilatore (LLVM-MinGW, ~150 MB)',
             no_elftools='manca pyelftools:  sudo apt install python3-pyelftools'),
@@ -73,6 +73,16 @@ def win_cxx():
     for c in ('x86_64-w64-mingw32-g++', 'g++'):
         if have(c): return shutil.which(c)
     return None
+
+def android_note(t):
+    """Says whether Android Studio (its Java and SDK) will be used, or what the first build downloads."""
+    try:
+        sys.path.insert(0, os.path.join(ROOT, 'tools')); import build_android as ba
+        st = ba.studio_dirs(); miss = ba.missing_packages()
+        if st: return t['a_studio'] + ('' if not miss else ' + ' + t['a_add'])
+        if not miss and ba.find_java_home(): return t['a_ready']
+    except Exception: pass
+    return t['a_setup']
 
 def find_7z():
     if have('7z'): return shutil.which('7z')
@@ -490,7 +500,7 @@ class App:
         for key, d in self.dev.items():
             miss = d['chk'](); note = (t['missing'] + miss) if miss else ('✓ ' + t['ok'])
             if key == 'windows' and WIN and not win_cxx(): note += '  ·  ' + t['w_dl']
-            if key == 'android' and not miss and not os.path.isdir(os.path.expanduser('~/android-sdk/ndk')): note += '  ·  ' + t['a_setup']
+            if key == 'android' and not miss: note += '  ·  ' + android_note(t)
             if key == '3ds' and not miss: note += '\n' + t['n3ds']
             d['note'].configure(text=note, fg=(ORA if miss else MUTED))
             if not self.worker:

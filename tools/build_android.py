@@ -4,9 +4,10 @@
     python3 tools/build_android.py            -> dist/android/PanicPark.apk
     python3 tools/build_android.py setup      only installs the tools (done automatically when missing)
 
-The first time it downloads what it needs (about 3 GB), all in your user folder:
+If Android Studio is installed it uses its Java (the bundled JBR) and its SDK, and an NDK already installed there;
+only the missing SDK packages are added. Otherwise the first time it downloads what it needs (about 3 GB):
   Java 17 (Eclipse Temurin, only if no Java 17+ is installed) -> ~/.projectpanic/jdk
-  Android command-line tools, SDK platform 35, build-tools, NDK  -> ~/android-sdk  (or ANDROID_HOME)
+  Android command-line tools, SDK platform 35, build-tools, NDK  -> ~/android-sdk
   SDL2 sources                                                   -> platform/SDL2-src
 The Gradle project is created in ~/panicprk_android (on WSL keep it on the Linux disk: Gradle is slow on /mnt/c);
 the sources stay in this folder and are compiled from here.
@@ -17,10 +18,52 @@ import glob, json, os, platform, re, shutil, stat, subprocess, sys, tarfile, url
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 WIN = os.name == 'nt'
 HOME = os.path.expanduser('~')
-SDK = os.environ.get('ANDROID_HOME') or os.environ.get('ANDROID_SDK_ROOT') or os.path.join(HOME, 'android-sdk')
+LOCAL = os.environ.get('LOCALAPPDATA', os.path.join(HOME, 'AppData', 'Local'))
+
+# ------------------------------------------------------------------------------------------------ Android Studio
+def studio_dirs():
+    """Android Studio installs (folders that contain its bundled Java, jbr/ or the older jre/)."""
+    pf = [os.environ.get(k, '') for k in ('ProgramFiles', 'ProgramW6432', 'ProgramFiles(x86)')]
+    pats = [os.path.join(p, 'Android', 'Android Studio*') for p in pf if p] + [
+        os.path.join(LOCAL, 'Programs', 'Android Studio*'),
+        os.path.join(LOCAL, 'JetBrains', 'Toolbox', 'apps', 'AndroidStudio', '*', '*'),
+        os.path.join(LOCAL, 'JetBrains', 'Toolbox', 'apps', 'android-studio*'),
+        '/opt/android-studio*', os.path.join(HOME, 'android-studio*'), '/usr/local/android-studio*', '/snap/android-studio/current',
+        os.path.join(HOME, '.local', 'share', 'JetBrains', 'Toolbox', 'apps', 'android-studio*'),
+        '/Applications/Android Studio*.app/Contents']
+    out = []
+    for p in pats:
+        for d in sorted(glob.glob(p), reverse=True):
+            if any(os.path.isdir(os.path.join(d, j)) for j in ('jbr', 'jre')) and d not in out: out.append(d)
+    return out
+
+def studio_javas():
+    return [os.path.join(d, j) for d in studio_dirs() for j in ('jbr', 'jre') if os.path.isdir(os.path.join(d, j))] + \
+           [os.path.join(d, j, 'Contents', 'Home') for d in studio_dirs() for j in ('jbr', 'jre')]
+
+def find_sdk():
+    """The SDK to use: ANDROID_HOME, then Android Studio's default place, then ours (~/android-sdk)."""
+    cands = [os.environ.get('ANDROID_HOME'), os.environ.get('ANDROID_SDK_ROOT'),
+             os.path.join(LOCAL, 'Android', 'Sdk'), os.path.join(HOME, 'Android', 'Sdk'),
+             os.path.join(HOME, 'Library', 'Android', 'sdk'), os.path.join(HOME, 'android-sdk')]
+    for c in cands:
+        if c and any(os.path.isdir(os.path.join(c, d)) for d in ('platforms', 'platform-tools', 'ndk', 'build-tools')): return c
+    return next((c for c in cands[:2] if c), os.path.join(HOME, 'android-sdk'))
+
+SDK = find_sdk()
 PROJ = os.environ.get('PROJ') or os.path.join(HOME, 'panicprk_android')
 JDK_DIR = os.path.join(HOME, '.projectpanic', 'jdk')
-NDK_VER = '27.2.12479018'
+NDK_VER = '27.2.12479018'                             # installed when the SDK has no NDK 25 or newer
+
+def pick_ndk():
+    """An NDK already in the SDK (e.g. installed by Android Studio): the newest one from version 25 on."""
+    vs = []
+    for d in glob.glob(os.path.join(SDK, 'ndk', '*')):
+        m = re.match(r'(\d+)\.(\d+)\.(\d+)', os.path.basename(d))
+        if m and int(m.group(1)) >= 25 and os.path.isfile(os.path.join(d, 'source.properties')):
+            vs.append((tuple(map(int, m.groups())), os.path.basename(d)))
+    return max(vs)[1] if vs else None
+
 CMDTOOLS = '11076708'
 SDLV = '2.30.9'
 ABIS = os.environ.get('ABIS', 'arm64-v8a').split()
@@ -64,6 +107,7 @@ def find_java_home():
     if os.environ.get('JAVA_HOME'): cands.append(os.environ['JAVA_HOME'])
     j = shutil.which('java')
     if j: cands.append(os.path.dirname(os.path.dirname(os.path.realpath(j))))
+    cands += studio_javas()                               # Android Studio's own Java (JBR)
     cands += sorted(glob.glob(os.path.join(JDK_DIR, '*')), reverse=True)
     for h in cands:
         java = os.path.join(h, 'bin', exe)
@@ -93,10 +137,23 @@ def get_java():
 
 # ------------------------------------------------------------------------------------------------ Android SDK
 def sdkmanager():
-    return os.path.join(SDK, 'cmdline-tools', 'latest', 'bin', 'sdkmanager.bat' if WIN else 'sdkmanager')
+    exe = 'sdkmanager.bat' if WIN else 'sdkmanager'
+    for d in [os.path.join(SDK, 'cmdline-tools', 'latest')] + sorted(glob.glob(os.path.join(SDK, 'cmdline-tools', '*')), reverse=True):
+        if os.path.isfile(os.path.join(d, 'bin', exe)): return os.path.join(d, 'bin', exe)
+    return os.path.join(SDK, 'cmdline-tools', 'latest', 'bin', exe)
 
-def setup(env):
-    if not os.path.isfile(sdkmanager()):
+def missing_packages():
+    need = []
+    if not os.path.isdir(os.path.join(SDK, 'platform-tools')): need.append('platform-tools')
+    if not os.path.isfile(os.path.join(SDK, 'platforms', 'android-35', 'android.jar')): need.append('platforms;android-35')
+    if not os.path.isdir(os.path.join(SDK, 'build-tools', '35.0.0')): need.append('build-tools;35.0.0')
+    if not pick_ndk(): need.append(f'ndk;{NDK_VER}')
+    return need
+
+def setup(env, force=False):
+    need = missing_packages() if not force else ['platform-tools', 'platforms;android-35', 'build-tools;35.0.0', f'ndk;{NDK_VER}']
+    if not need: log('SDK: everything already installed'); return
+    if not os.path.isfile(sdkmanager()):              # Android Studio may not have the command-line tools: add them
         z = os.path.join(SDK, 'cmdtools.zip'); os.makedirs(SDK, exist_ok=True)
         download(f'https://dl.google.com/android/repository/commandlinetools-{"win" if WIN else "linux"}-{CMDTOOLS}_latest.zip', z)
         tmp = os.path.join(SDK, 'cmdtools_tmp'); shutil.rmtree(tmp, ignore_errors=True)
@@ -107,8 +164,8 @@ def setup(env):
     sm = sdkmanager()
     log('accepting the SDK licenses...')
     subprocess.run([sm, '--licenses'], input='y\n' * 100, text=True, env=env, capture_output=True, shell=WIN)
-    log('installing the SDK packages (this takes a while)...')
-    r = subprocess.run([sm, 'platform-tools', 'platforms;android-35', 'build-tools;35.0.0', f'ndk;{NDK_VER}'],
+    log('installing the SDK packages (this takes a while): ' + ', '.join(need))
+    r = subprocess.run([sm] + need,
                        input='y\n' * 20, text=True, env=env, shell=WIN)
     if r.returncode: sys.exit('ERROR: sdkmanager failed')
     log('SETUP_OK')
@@ -155,7 +212,9 @@ def prepare(sdl):
     # app/build.gradle: app identifier, ABI, NDK
     def gradle(s):
         if 'applicationId' not in s: s = s.replace('minSdkVersion 21', f'applicationId "{APPID}"\n        minSdkVersion 21', 1)
-        if 'ndkVersion' not in s: s = s.replace('compileSdkVersion 35', f'compileSdkVersion 35\n    ndkVersion "{NDK_VER}"', 1)
+        ndk = pick_ndk() or NDK_VER
+        if 'ndkVersion' in s: s = re.sub(r'ndkVersion "[^"]*"', f'ndkVersion "{ndk}"', s)
+        else: s = s.replace('compileSdkVersion 35', f'compileSdkVersion 35\n    ndkVersion "{ndk}"', 1)
         return re.sub(r'abiFilters .*', 'abiFilters ' + ', '.join(f"'{a}'" for a in ABIS), s)
     edit(os.path.join(PROJ, 'app', 'build.gradle'), gradle)
     # our activity (asks for all files access for the public PanicPark folder) and permissions
@@ -214,7 +273,10 @@ def main():
     jh = get_java(); log(f'Java: {jh}')
     env = dict(os.environ, JAVA_HOME=jh, ANDROID_HOME=SDK, ANDROID_SDK_ROOT=SDK)
     env['PATH'] = os.path.join(jh, 'bin') + os.pathsep + env.get('PATH', '')
-    if 'setup' in sys.argv[1:] or not os.path.isdir(os.path.join(SDK, 'ndk', NDK_VER)): setup(env)
+    st = studio_dirs()
+    log(f'Android Studio: {st[0]}' if st else 'Android Studio: not found (using our own tools)')
+    log(f'SDK: {SDK}')
+    setup(env)
     if 'setup' in sys.argv[1:]: return
     prepare(get_sdl())
     gw = os.path.join(PROJ, 'gradlew.bat' if WIN else 'gradlew')

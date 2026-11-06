@@ -22,7 +22,8 @@ Not affiliated with Bandai Namco. License: BSD-3-Clause (parts derived from MAME
 Start it:
 - **Windows**: install [Python 3](https://www.python.org/downloads/) (tick "Add python.exe to PATH"), then double-click
   `ProjectPanicBuilder.py`. No WSL needed: the first Windows build downloads the compiler (LLVM-MinGW) by itself.
-  Android works on Windows too: the first build downloads Java and the Android SDK (~3 GB) by itself.
+  Android works on Windows too: if Android Studio is installed it uses its Java and SDK, otherwise the first build
+  downloads them (~3 GB) by itself.
   Switch, Wii U and 3DS work from Windows with the [devkitPro installer](https://devkitpro.org/wiki/Getting_Started)
   (tick the Switch, Wii U and 3DS packages). Only the Linux build needs Linux or WSL.
 - **Linux / WSL**: `sudo apt install python3-tk p7zip-full`, then `python3 ProjectPanicBuilder.py`.
@@ -62,7 +63,7 @@ The commands below are for Linux or WSL (on Windows without WSL use the builder 
 |---|---|---|---|
 | Linux | `sudo apt install g++ libsdl2-dev` | `sh platform/build_linux.sh` | `dist/linux/` |
 | Windows | `sudo apt install g++-mingw-w64-x86-64-posix` | `sh platform/build_windows.sh` | `dist/windows/PanicPark.exe` |
-| Android | nothing: the first build downloads Java and the Android SDK (~3 GB) | `python3 tools/build_android.py` (also on Windows) | `dist/android/PanicPark.apk` |
+| Android | nothing: uses Android Studio if installed, otherwise downloads Java and the SDK (~3 GB) | `python3 tools/build_android.py` (also on Windows) | `dist/android/PanicPark.apk` |
 | Switch | [devkitPro](https://devkitpro.org/wiki/Getting_Started) + `sudo dkp-pacman -S switch-dev switch-sdl2` | `sh platform/build_switch.sh` | `dist/switch/sd/` |
 | Wii U (Aroma) | devkitPro + `sudo dkp-pacman -S wiiu-dev wiiu-sdl2` | `sh platform/build_wiiu.sh` | `dist/wiiu/sd/` |
 | New 3DS | devkitPro + `sudo dkp-pacman -S 3ds-dev` | `sh platform/build_3ds.sh` | `dist/3ds/sd/` |
