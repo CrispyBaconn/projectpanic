@@ -1436,9 +1436,34 @@ static void run_window() {
 #include "platform_3ds.h"
 #endif
 int main(int argc, char** argv) {
-    // without arguments (double click on the executable): files in the current folder, window enabled
+    // without arguments (double click on the executable): window enabled, files found by themselves
     static char* defargs[] = { argv[0], (char*)"panicprk_main.elf", (char*)"main_r4650_BE_4MB.bin", (char*)"1000000000", (char*)"0", (char*)".", nullptr };
-    if (argc == 1) { argc = 6; argv = defargs; if (!getenv("S23_WINDOW")) { static char w[] = "S23_WINDOW=1"; putenv(w); } }
+    if (argc == 1) {
+        argc = 6; argv = defargs; if (!getenv("S23_WINDOW")) { static char w[] = "S23_WINDOW=1"; putenv(w); }
+#ifndef S23_CONSOLE
+        // PC: work in the executable's folder (assets/, nvram.bin, panicprk.ini, lang/ live there). The ELF and the program
+        // image are next to it or, when started from dist/<system>/ of the project, two folders up; the ROMs are in
+        // panicprkrom/ beside them (or in the same folder). This replaces the old start.bat.
+        {
+            char exe[4096] = {0};
+#ifdef _WIN32
+            GetModuleFileNameA(nullptr, exe, sizeof exe - 1);
+            SetPriorityClass(GetCurrentProcess(), HIGH_PRIORITY_CLASS);   // like "start /high" in the old start.bat
+#else
+            if (readlink("/proc/self/exe", exe, sizeof exe - 1) < 0) exe[0] = 0;
+#endif
+            std::string d = exe; size_t sl = d.find_last_of("/\\");
+            if (sl != std::string::npos && chdir(d.substr(0, sl).c_str()) == 0) {}
+            auto exists = [](const std::string& f) { FILE* t = fopen(f.c_str(), "rb"); if (t) fclose(t); return t != nullptr; };
+            static std::string base = ".", elf, bin, rom;
+            if (!exists("panicprk_main.elf") && exists("../../panicprk_main.elf")) base = "../..";
+            elf = base + "/panicprk_main.elf"; bin = base + "/main_r4650_BE_4MB.bin";
+            rom = exists(base + "/panicprkrom/pnp2vera.ic1") || exists(base + "/panicprkrom/pnp1vera.ic3") ? base + "/panicprkrom" : base;
+            defargs[1] = (char*)elf.c_str(); defargs[2] = (char*)bin.c_str(); defargs[5] = (char*)rom.c_str();
+            printf("files: %s, %s, ROMs in %s\n", defargs[1], defargs[2], defargs[5]);
+        }
+#endif
+    }
 #ifdef S23_CONSOLE
     {   // everything lives in the app folder on the SD card (Wii U: wiiu/apps/panicprk/, Switch: switch/panicprk/), ROMs in panicprkrom/ or there
         const std::string D = S23_APP_DIR;

@@ -27,6 +27,7 @@ FONT, MONO = ('Segoe UI', 'Consolas') if WIN else ('DejaVu Sans', 'DejaVu Sans M
 # devkitPro: /opt/devkitpro on Linux/WSL; on Windows its installer puts it (with its own MSYS2 bash) in C:\devkitPro
 DKP = os.environ.get('DEVKITPRO_WIN', r'C:\devkitPro') if WIN else os.environ.get('DEVKITPRO', '/opt/devkitpro')
 DKP_BASH = os.path.join(DKP, 'msys2', 'usr', 'bin', 'bash.exe')
+DKP_MAKE = os.path.join(DKP, 'msys2', 'usr', 'bin', 'make.exe')
 SDLV = '2.30.9'
 LLVM_MINGW_PIN = '20240619'          # used if GitHub's "latest release" lookup fails
 ROM_KEY = ('pnp2vera.ic1', 'pnp2vera.ic2')               # the two halves of the main program ROM
@@ -43,7 +44,7 @@ TXT = {
             bad_rom='The archive does not contain the Panic Park ROMs (pnp2vera.ic1 / pnp2vera.ic2).',
             no7z='Could not open the .7z archive: install 7-Zip (7-zip.org, or  sudo apt install p7zip-full)',
             done='Finished! The files are in the dist folder.', failed='Something went wrong: open "Show details".',
-            stopped='Stopped.', open='Open the dist folder', a_setup='first time: downloads the Android SDK (~3 GB)',
+            stopped='Stopped.', open='Open the dist folder', a_setup='first time: downloads Java and the Android SDK (~3 GB)',
             n3ds='needs the assets folder made by the PC version: build Windows or Linux too and start the game once',
             confirm_stop='Stop the build?', reuse='already extracted: using panicprkrom/', no_file='file not found', recheck='Check again', w_dl='first time: downloads the compiler (LLVM-MinGW, ~150 MB)',
             no_elftools='pyelftools is missing:  sudo apt install python3-pyelftools'),
@@ -57,7 +58,7 @@ TXT = {
             bad_rom="L'archivio non contiene le ROM di Panic Park (pnp2vera.ic1 / pnp2vera.ic2).",
             no7z='Impossibile aprire l’archivio .7z: installa 7-Zip (7-zip.org, oppure  sudo apt install p7zip-full)',
             done='Finito! I file sono nella cartella dist.', failed='Qualcosa è andato storto: apri "Mostra dettagli".',
-            stopped='Fermato.', open='Apri la cartella dist', a_setup='la prima volta scarica l’SDK Android (~3 GB)',
+            stopped='Fermato.', open='Apri la cartella dist', a_setup='la prima volta scarica Java e l’SDK Android (~3 GB)',
             n3ds='serve la cartella assets creata dalla versione PC: compila anche Windows o Linux e avvia il gioco una volta',
             confirm_stop='Fermare la compilazione?', reuse='già estratte: uso panicprkrom/', no_file='file non trovato', recheck='Ricontrolla', w_dl='la prima volta scarica il compilatore (LLVM-MinGW, ~150 MB)',
             no_elftools='manca pyelftools:  sudo apt install python3-pyelftools'),
@@ -91,19 +92,18 @@ def chk_linux():
     if WIN: return 'Linux / WSL'
     return None if have('g++') and have('sdl2-config') else 'sudo apt install g++ libsdl2-dev'
 def chk_android():
-    if WIN: return 'Linux / WSL'
-    return None if have('java') and have('unzip') else 'sudo apt install openjdk-17-jdk unzip wget'
+    return None                                           # tools/build_android.py downloads Java and the SDK itself
 def chk_switch():
     ok = os.path.isfile(f'{DKP}/libnx/switch_rules') and os.path.isfile(f'{DKP}/portlibs/switch/lib/libSDL2.a')
-    if WIN: return None if ok and os.path.isfile(DKP_BASH) else 'devkitPro (devkitpro.org/wiki/Getting_Started) + switch-dev, switch-sdl2'
+    if WIN: return None if ok and os.path.isfile(DKP_BASH) and os.path.isfile(DKP_MAKE) else 'devkitPro (devkitpro.org/wiki/Getting_Started) + switch-dev, switch-sdl2'
     return None if ok else 'devkitPro + sudo dkp-pacman -S switch-dev switch-sdl2'
 def chk_wiiu():
     ok = os.path.isfile(f'{DKP}/wut/share/wut_rules') and os.path.isfile(f'{DKP}/portlibs/wiiu/lib/libSDL2.a')
-    if WIN: return None if ok and os.path.isfile(DKP_BASH) else 'devkitPro (devkitpro.org/wiki/Getting_Started) + wiiu-dev, wiiu-sdl2'
+    if WIN: return None if ok and os.path.isfile(DKP_BASH) and os.path.isfile(DKP_MAKE) else 'devkitPro (devkitpro.org/wiki/Getting_Started) + wiiu-dev, wiiu-sdl2'
     return None if ok else 'devkitPro + sudo dkp-pacman -S wiiu-dev wiiu-sdl2'
 def chk_3ds():
     ok = os.path.isfile(f'{DKP}/devkitARM/3ds_rules') and os.path.isfile(f'{DKP}/libctru/lib/libcitro3d.a')
-    if WIN: return None if ok and os.path.isfile(DKP_BASH) else 'devkitPro (devkitpro.org/wiki/Getting_Started) + 3ds-dev'
+    if WIN: return None if ok and os.path.isfile(DKP_BASH) and os.path.isfile(DKP_MAKE) else 'devkitPro (devkitpro.org/wiki/Getting_Started) + 3ds-dev'
     return None if ok else 'devkitPro + sudo dkp-pacman -S 3ds-dev'
 
 DEVICES = [  # key, name, script, check
@@ -279,7 +279,9 @@ class Worker(threading.Thread):
             if files: os.makedirs(os.path.join(out, sub), exist_ok=True)
             for f in files: shutil.copy(f, os.path.join(out, sub))
         sh = open(os.path.join(ROOT, 'platform', 'build_windows.sh'), encoding='utf-8').read()
-        for name in ('README.txt', 'start.bat'):
+        old = os.path.join(out, 'start.bat')                     # no longer needed: PanicPark.exe finds the files itself
+        if os.path.isfile(old): os.remove(old)
+        for name in ('README.txt',):
             m = re.search(r"cat > \$OUT/" + re.escape(name) + r" <<'EOF'\n(.*?)\nEOF", sh, re.S)
             if m: open(os.path.join(out, name), 'w', newline='\r\n').write(m.group(1) + '\n')
         self.log('BUILD_OK -> ' + os.path.join(out, 'PanicPark.exe'))
@@ -347,10 +349,9 @@ class Worker(threading.Thread):
                         script = next(d[2] for d in DEVICES if d[0] == key)
                         nsrc = len([f for f in os.listdir(os.path.join(ROOT, 'gen_full')) if f.endswith('.cpp')]) + 1
                         pat = re.compile(r'(gen_\d+|dispatch|platform_stub|switch_sys)\.cpp')
-                        if key == 'android' and not os.path.isdir(os.path.expanduser(
-                                os.environ.get('ANDROID_HOME', '~/android-sdk')) + '/ndk'):
-                            ok = self.run_cmd(['bash', 'platform/build_android.sh', 'setup'], i) == 0
-                        if ok and WIN and key == 'windows':
+                        if key == 'android':                 # same Python script on Windows and Linux
+                            ok = self.run_cmd([sys.executable, 'tools/build_android.py'], i, nsrc, pat) == 0
+                        elif ok and WIN and key == 'windows':
                             ok = self.build_windows_native(i)
                         elif ok and WIN:                     # Switch / Wii U / 3DS: the scripts, with devkitPro's bash
                             ok = self.run_cmd([DKP_BASH, '-lc', f'cd "{msys_path(ROOT)}" && sh platform/{script}'], i, nsrc, pat,

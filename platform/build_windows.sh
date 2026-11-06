@@ -38,26 +38,13 @@ mkdir -p $OUT/lang && cp platform/lang/*.json $OUT/lang/          # menu transla
 if ls platform/ui/*.png >/dev/null 2>&1; then mkdir -p $OUT/ui && cp platform/ui/*.png $OUT/ui/; fi   # menu background and logo (optional)
 cat > $OUT/README.txt <<'EOF'
 Recompiled Panic Park - Windows
-Put in this folder (next to PanicPark.exe):
-  panicprk_main.elf, main_r4650_BE_4MB.bin and all the panicprk ROMs (including pnp1wavel.2c / pnp1waveh.2a for audio).
-Then double-click start.bat (or PanicPark.exe).
-If they stay in dist\windows, start.bat takes elf/bin from the recomp folder and the ROMs from recomp\panicprkrom.
+Double-click PanicPark.exe. It finds by itself:
+  panicprk_main.elf and main_r4650_BE_4MB.bin next to PanicPark.exe (or two folders up, when it stays in the
+  project's dist\windows), and the ROMs in the panicprkrom folder beside them (or in the same folder).
 To use another ROM folder: PanicPark.exe panicprk_main.elf main_r4650_BE_4MB.bin 1000000000 0 C:\path\rom
 (the window always opens; S23_WINDOW=0 to run without a window)
 Keys: F2 test, F3 config DIP, F8 lights and shadows, F9 3D order, F10 3D dump, F11 full screen, F12 screenshot, Esc exit.
 EOF
-# start.bat: looks for elf/bin/ROMs next to the exe, otherwise in the project folder (two levels up)
-cat > $OUT/start.bat <<'EOF'
-@echo off
-cd /d "%~dp0"
-set BASE=.
-if not exist "panicprk_main.elf" set BASE=..\..
-set ROM=%BASE%
-if exist "%BASE%\panicprkrom\pnp1vera.ic3" set ROM=%BASE%\panicprkrom
-if not exist "%BASE%\panicprk_main.elf" (echo panicprk_main.elf not found & pause & exit /b 1)
-echo ELF/BIN: %BASE%   ROM: %ROM%
-start "" /wait /high PanicPark.exe "%BASE%\panicprk_main.elf" "%BASE%\main_r4650_BE_4MB.bin" 1000000000 0 "%ROM%"
-pause
-EOF
-sed -i 's/$/\r/' $OUT/start.bat $OUT/README.txt
-echo "BUILD_OK -> $OUT/PanicPark.exe (+ start.bat)"
+rm -f $OUT/start.bat                                  # no longer needed: PanicPark.exe finds the files by itself
+sed -i 's/$/\r/' $OUT/README.txt
+echo "BUILD_OK -> $OUT/PanicPark.exe"

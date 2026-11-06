@@ -22,8 +22,9 @@ Not affiliated with Bandai Namco. License: BSD-3-Clause (parts derived from MAME
 Start it:
 - **Windows**: install [Python 3](https://www.python.org/downloads/) (tick "Add python.exe to PATH"), then double-click
   `ProjectPanicBuilder.py`. No WSL needed: the first Windows build downloads the compiler (LLVM-MinGW) by itself.
-  Switch, Wii U and 3DS also work from Windows with the [devkitPro installer](https://devkitpro.org/wiki/Getting_Started);
-  Linux and Android builds need Linux or WSL.
+  Android works on Windows too: the first build downloads Java and the Android SDK (~3 GB) by itself.
+  Switch, Wii U and 3DS work from Windows with the [devkitPro installer](https://devkitpro.org/wiki/Getting_Started)
+  (tick the Switch, Wii U and 3DS packages). Only the Linux build needs Linux or WSL.
 - **Linux / WSL**: `sudo apt install python3-tk p7zip-full`, then `python3 ProjectPanicBuilder.py`.
 
 Devices whose tools are missing are greyed out, with what to install. If a build fails the window says why, and
@@ -55,13 +56,13 @@ python3 mips2cpp.py --elf panicprk_main.elf --funcs functions.csv --out gen_full
 
 ### 2. Build
 
-All builds run on Linux or WSL. The result ends up in `dist/`.
+The commands below are for Linux or WSL (on Windows without WSL use the builder above). The result ends up in `dist/`.
 
 | Device | Install once | Build | Output |
 |---|---|---|---|
 | Linux | `sudo apt install g++ libsdl2-dev` | `sh platform/build_linux.sh` | `dist/linux/` |
 | Windows | `sudo apt install g++-mingw-w64-x86-64-posix` | `sh platform/build_windows.sh` | `dist/windows/PanicPark.exe` |
-| Android | `sudo apt install openjdk-17-jdk unzip wget`<br>`bash platform/build_android.sh setup` | `bash platform/build_android.sh` | `dist/android/PanicPark.apk` |
+| Android | nothing: the first build downloads Java and the Android SDK (~3 GB) | `python3 tools/build_android.py` (also on Windows) | `dist/android/PanicPark.apk` |
 | Switch | [devkitPro](https://devkitpro.org/wiki/Getting_Started) + `sudo dkp-pacman -S switch-dev switch-sdl2` | `sh platform/build_switch.sh` | `dist/switch/sd/` |
 | Wii U (Aroma) | devkitPro + `sudo dkp-pacman -S wiiu-dev wiiu-sdl2` | `sh platform/build_wiiu.sh` | `dist/wiiu/sd/` |
 | New 3DS | devkitPro + `sudo dkp-pacman -S 3ds-dev` | `sh platform/build_3ds.sh` | `dist/3ds/sd/` |
@@ -72,7 +73,7 @@ All builds run on Linux or WSL. The result ends up in `dist/`.
 
 Copy `panicprk_main.elf`, `main_r4650_BE_4MB.bin` and a `panicprkrom/` folder with all the Panic Park ROMs next to the program.
 
-- **Windows**: double-click `start.bat`.
+- **Windows**: double-click `PanicPark.exe` (it finds the files and the ROMs by itself).
 - **Linux**: `ROMDIR=panicprkrom ./run.sh`.
 - **Android**: copy the files into the `PanicPark` folder in phone storage (created on the first launch).
 - **Switch / Wii U / 3DS**: copy the contents of `dist/<console>/sd/` to the root of the SD card. The build scripts already
