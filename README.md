@@ -7,6 +7,9 @@ Runs on Windows, Linux, Android, Nintendo Switch, Wii U and New 3DS.
 This repository contains no game code or data: everything is generated from **your own** Panic Park ROM set.
 Not affiliated with Bandai Namco. License: BSD-3-Clause (parts derived from MAME, see `LICENSE`).
 
+Please don't share ROMs, the generated `gen_full/` code, the `assets/` folder or the built programs (`dist/`, which also
+contains copies of your ROM files), and don't post them in issues: only the source code in this repository is shared.
+
 ## Easy way: Project Panic Builder
 
 `ProjectPanicBuilder.py` is a window that does all the steps below for you, on **Windows** and **Linux** alike:

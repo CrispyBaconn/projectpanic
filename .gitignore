@@ -28,6 +28,15 @@ platform/ui/*.png
 *.mp4
 *.wav
 *.dmp
+*.7z
+*.zip
+*.rar
+*.jpg
+*.gif
+segdump_*
+glcmp_*
+pica_*_gpu*
+pica_*_sw*
 log.txt
 __pycache__/
 platform/SDL2-src/
