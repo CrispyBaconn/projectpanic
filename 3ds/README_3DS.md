@@ -30,7 +30,9 @@ The `assets/` folder is required on the 3DS: converting the ROMs on the 3DS does
 The New 3DS gives a homebrew app about 120 MB. The normal heap is capped at 96 MB; everything else becomes
 "linear" memory, used by the GPU (texture atlases, command buffer) and by the asset files that fit there.
 The data ROM (16 MB) and the audio samples stay on the SD card and are read in pages. It doesn't fit on the old 3DS.
-The `MEM` lines in `log.txt` show how the memory was split.
+The `MEM` lines in `log.txt` show how the memory was split ("granted at startup" should be about 120 MB).
+If the Homebrew Launcher was started in the old 3DS memory mode (about 60 MB, for example with a game or app still
+open in the HOME Menu), the game stops at once and says so: close the other app and start it again.
 
 ## Performance
 The main game CPU (R4650) and the H8 are emulated on the 804 MHz ARM11 cores, so the game may run slower than the real one.

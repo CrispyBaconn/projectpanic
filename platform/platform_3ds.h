@@ -338,9 +338,17 @@ static void fatal(const std::string& msg) {
         C3D_FrameEnd(0);
     }
 }
+// the system gave the old 3DS amount of memory: explain how to get the full New 3DS one
+static std::string low_mem_msg() {
+    char m[420]; snprintf(m, sizeof m, "The system gave the game only %.0f MB of memory: it needs about 120 MB "
+        "(New 3DS mode). Press HOME and close any game or app that is still open (Close), then start Panic Park "
+        "again from the Homebrew Launcher.", s23_mem_remaining / 1048576.0);
+    return m;
+}
 static void on_oom() {                                  // new failed (without exceptions: otherwise abort)
     std::set_new_handler(nullptr);
     printf("ERROR: out of memory (new)\n"); mem_report("new failed"); fflush(stdout);
+    if (s23_mem_remaining < (100u << 20)) { fatal(low_mem_msg()); exit(0); }
     char m[200]; snprintf(m, sizeof m, "Out of memory. The system granted %.1f MB (heap %.1f MB + GPU %.1f MB).", s23_mem_remaining / 1048576.0, __ctru_heap_size / 1048576.0, __ctru_linear_heap_size / 1048576.0);
     fatal(m); exit(0);
 }

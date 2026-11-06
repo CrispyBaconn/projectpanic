@@ -1490,6 +1490,9 @@ int main(int argc, char** argv) {
         }
         i18n::select(n3ds::cfg.ui_lang);
         if (!n3ds::init(D + "/ui")) { printf("3DS: GPU not initialised\n"); fflush(stdout); }
+        if (s23_mem_remaining < (100u << 20)) {        // started in the old 3DS memory mode (64 MB): it can't fit
+            n3ds::fatal(n3ds::low_mem_msg()); C2D_Fini(); C3D_Fini(); gfxExit(); return 0;
+        }
         n3ds::splash(i18n::tru("loading"));
 #endif
 #ifdef __ANDROID__
