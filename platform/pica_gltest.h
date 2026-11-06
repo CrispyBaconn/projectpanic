@@ -45,9 +45,10 @@ struct GLTest : pica::Backend {
         const int i = s % per, ax = i % 8, ay = i / 8; const float C = (float)pica::CELL;
         return {ax * C / 1024.f, C / 1024.f, ay * C / 1024.f, C / 1024.f};
     }
-    void upload_slot(int s, const uint32_t* rgba) override {
+    void upload_slot(int s, const uint16_t* p) override {           // RGBA5551 -> RGBA8 (same precision as the 3DS)
         std::vector<uint8_t> b(pica::CELL * pica::CELL * 4);
-        for (int i = 0; i < pica::CELL * pica::CELL; i++) { uint32_t v = rgba[i]; b[4 * i] = v >> 24; b[4 * i + 1] = v >> 16; b[4 * i + 2] = v >> 8; b[4 * i + 3] = v; }
+        auto x5 = [](unsigned c) { return (uint8_t)((c << 3) | (c >> 2)); };
+        for (int i = 0; i < pica::CELL * pica::CELL; i++) { const unsigned v = p[i]; b[4 * i] = x5((v >> 11) & 31); b[4 * i + 1] = x5((v >> 6) & 31); b[4 * i + 2] = x5((v >> 1) & 31); b[4 * i + 3] = (v & 1) ? 255 : 0; }
         glPixelStorei(UNPACK_ALIGNMENT, 4); glPixelStorei(UNPACK_ROW_LENGTH, 0);
         const int i = s % per; glBindTexture(TEXTURE_2D, tex[s / per]);
         glTexSubImage2D(TEXTURE_2D, 0, per > 1 ? (i % 8) * pica::CELL : 0, per > 1 ? (i / 8) * pica::CELL : 0, pica::CELL, pica::CELL, RGBA, UNSIGNED_BYTE, b.data());

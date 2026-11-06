@@ -564,16 +564,16 @@ static int zclip(int n, const PV* v, PV* out, float clipval) {
     return (int)(o - out);
 }
 
-static void apply_transform(s32 xi, s32 yi, s32 zi, const Entry& re, float& x, float& y, float& z) {
-    s16 m[9]; memcpy(m, re.model.m, sizeof m); if (re.model.transpose) transpose(m);
+// m: the model's matrix, already transposed if the model asks for it (model_matrix: once per model)
+static void model_matrix(const Entry& re, s16* m) { memcpy(m, re.model.m, sizeof(s16) * 9); if (re.model.transpose) transpose(m); }
+static void apply_transform(s32 xi, s32 yi, s32 zi, const Entry& re, const s16* m, float& x, float& y, float& z) {
     x = (((m[0] * (s64)xi + m[1] * (s64)yi + m[2] * (s64)zi) >> 14) * re.model.scaling + re.model.v[0]) / 16384.f;
     y = (((m[3] * (s64)xi + m[4] * (s64)yi + m[5] * (s64)zi) >> 14) * re.model.scaling + re.model.v[1]) / 16384.f;
     z = (((m[6] * (s64)xi + m[7] * (s64)yi + m[8] * (s64)zi) >> 14) * re.model.scaling + re.model.v[2]) / 16384.f;
 }
 // rotation of normals and light: same matrix as the vertices (transposed if the model asks for it). For the light of the
 // C435 (dot product) doesn't change anything, but the normal and the light in camera space are needed for reflection and shadows.
-static void apply_matrot(s32 xi, s32 yi, s32 zi, const Entry& re, float& x, float& y, float& z) {
-    s16 m[9]; memcpy(m, re.model.m, sizeof m); if (re.model.transpose) transpose(m);
+static void apply_matrot(s32 xi, s32 yi, s32 zi, const s16* m, float& x, float& y, float& z) {
     x = (m[0] * (float)xi + m[1] * (float)yi + m[2] * (float)zi) / 4194304.f;
     y = (m[3] * (float)xi + m[4] * (float)yi + m[5] * (float)zi) / 4194304.f;
     z = (m[6] * (float)xi + m[7] * (float)yi + m[8] * (float)zi) / 4194304.f;
@@ -615,6 +615,8 @@ static void make_model(const Entry& re, Frame& F) {
     u32 adr = R.ptrom[re.model.model], adr2 = R.ptrom[re.model.model2], limit = (u32)R.ptrom_n;
     if (adr >= limit || adr2 >= limit) return;
     u32 offs = 0; const u32* data = &R.ptrom[adr]; const u32* data2 = &R.ptrom[adr2];
+    s16 M[9]; model_matrix(re, M); bool lit = false; float cx = 0, cy = 0, cz = 0;
+    const float ub0 = uv_bias(false), ub1 = uv_bias(true);
     while (adr + offs + 16 < limit && adr2 + offs + 16 < limit) {
         PV pv[16];
         u32 type = data[offs++], h = data[offs++];
@@ -625,16 +627,16 @@ static void make_model(const Entry& re, Frame& F) {
         if (lmode == 3) { extptr = offs; offs += ne; } else light = data[offs++];
         for (int i = 0; i < ne && i < 16; i++) {
             u32 v1 = data[offs + 0], v2 = data[offs + 1], v3 = data[offs + 2];
-            float x, y, z; apply_transform(s24(v1), s24(v2), s24(v3), re, x, y, z);
+            float x, y, z; apply_transform(s24(v1), s24(v2), s24(v3), re, M, x, y, z);
             float fb = re.model_blend_factor / 16384.f, fa = 1.f - fb;
             if (model_blend) {
-                float x2, y2, z2; apply_transform(s24(data2[offs]), s24(data2[offs + 1]), s24(data2[offs + 2]), re, x2, y2, z2);
+                float x2, y2, z2; apply_transform(s24(data2[offs]), s24(data2[offs + 1]), s24(data2[offs + 2]), re, M, x2, y2, z2);
                 x = x * fa + x2 * fb; y = y * fa + y2 * fb; z = z * fa + z2 * fb;
             }
             offs += 3;
             pv[i].x = x; pv[i].y = y; pv[i].p[0] = z;
-            pv[i].p[1] = (float)(((v1 >> 20) & 0xf00) | ((v2 >> 24) & 0xff)) + uv_bias(stencil) + re.tx;
-            pv[i].p[2] = (float)(((v1 >> 16) & 0xf00) | ((v3 >> 24) & 0xff)) + uv_bias(stencil) + re.ty;
+            pv[i].p[1] = (float)(((v1 >> 20) & 0xf00) | ((v2 >> 24) & 0xff)) + (stencil ? ub1 : ub0) + re.tx;
+            pv[i].p[2] = (float)(((v1 >> 16) & 0xf00) | ((v3 >> 24) & 0xff)) + (stencil ? ub1 : ub0) + re.ty;
             pv[i].p[3] = 64;
             static const u8 LS[4] = { 24, 16, 8, 0 };
             switch (lmode) {
@@ -647,10 +649,10 @@ static void make_model(const Entry& re, Frame& F) {
                     nx = (s32)(nx * fa + nx2 * fb); ny = (s32)(ny * fa + ny2 * fb); nz = (s32)(nz * fa + nz2 * fb);
                 }
                 extptr++;
-                float nrx, nry, nrz; apply_matrot(nx, ny, nz, re, nrx, nry, nrz);
+                float nrx, nry, nrz; apply_matrot(nx, ny, nz, M, nrx, nry, nrz);
                 float len = sqrtf(nrx * nrx + nry * nry + nrz * nrz); if (len != 0.f) { nrx /= len; nry /= len; nrz /= len; }
-                float cx, cy, cz; apply_matrot(re.model.lv[0], re.model.lv[1], re.model.lv[2], re, cx, cy, cz);
-                len = sqrtf(cx * cx + cy * cy + cz * cz); if (len != 0.f) { cx /= len; cy /= len; cz /= len; }
+                if (!lit) { lit = true; apply_matrot(re.model.lv[0], re.model.lv[1], re.model.lv[2], M, cx, cy, cz);    // the light: once per model
+                    const float ll = sqrtf(cx * cx + cy * cy + cz * cz); if (ll != 0.f) { cx /= ll; cy /= ll; cz /= ll; } }
                 float lsi = nrx * cx + nry * cy + nrz * cz; if (lsi < 0) lsi = 0;
                 pv[i].p[3] = std::clamp(re.light_ambient + re.light_power * lsi, 0.f, light_max);
                 { static const int dm = getenv("S23_LDBG") ? (int)strtol(getenv("S23_LDBG"), 0, 16) : -1; if (re.model.model == dm && dump) printf("LDBG v%d n=%.2f,%.2f,%.2f raw=%d,%d,%d L=%.2f,%.2f,%.2f lsi=%.2f pos=%.3f,%.3f,%.3f\n", i, nrx, nry, nrz, nx, ny, nz, cx, cy, cz, lsi, x, y, z); }

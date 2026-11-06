@@ -1007,7 +1007,15 @@ static void compose_sw(const FrameIn& in, uint8_t* out, int W, int H, int bpp = 
     g_t_comp_us += (uint32_t)((now_ns() - comp0) / 1000);
 }
 static int g_out_bpp = 3;                                            // image format for the screen: 3 = RGB24, 4 = RGBA32 (no conversion in SDL)
-static void render_frame(uint8_t* out, int W = 640, int H = 480, int bpp = 3) { static FrameIn in; const uint64_t a = now_ns(); gather(in); g_t_gather_us += (uint32_t)((now_ns() - a) / 1000); compose_sw(in, out, W, H, bpp); }
+// S23_PICADUMP=dir: saves the 3D list of every 10th frame (for tools/bench_pica.cpp, the 3DS renderer benchmark)
+static void pica_dump(const FrameIn& in) {
+    static const char* d = getenv("S23_PICADUMP"); static unsigned n = 0, k = 0; if (!d || !in.have3d || (n++ % 10)) return;
+    char p[512]; snprintf(p, sizeof p, "%s/list_%04u.bin", d, k++);
+    if (FILE* f = fopen(p, "wb")) { const uint32_t ne = (uint32_t)in.lst.size(), np = (uint32_t)in.pal3d.size();
+        fwrite(&ne, 4, 1, f); fwrite(in.lst.data(), sizeof(g3d::Entry), ne, f); fwrite(&np, 4, 1, f); fwrite(in.pal3d.data(), 4, np, f);
+        fwrite(g3d::C.c412_sram, sizeof g3d::C.c412_sram, 1, f); fclose(f); }
+}
+static void render_frame(uint8_t* out, int W = 640, int H = 480, int bpp = 3) { static FrameIn in; const uint64_t a = now_ns(); gather(in); g_t_gather_us += (uint32_t)((now_ns() - a) / 1000); pica_dump(in); compose_sw(in, out, W, H, bpp); }
 #ifdef USE_SDL
 #include "gl3d.h"
 #include "pica_gltest.h"
@@ -1151,7 +1159,7 @@ static void* render_thread(void*) {
         const uint64_t r0 = now_ns();
         if (g_rs.gpu.load()) {                                                               // GPU: only the geometry is prepared
             static FrameIn in; static gl3d::Frame gb; static const bool cmp = getenv("S23_GLCMP") != nullptr;
-            gather(in); build_gl(in, gb, w, h); if (cmp) compose_sw(in, buf.data(), w, h);
+            gather(in); pica_dump(in); build_gl(in, gb, w, h); if (cmp) compose_sw(in, buf.data(), w, h);
             g_rt_us += (uint32_t)((now_ns() - r0) / 1000); g_rt_n++;
             g_rs.lock(); std::swap(gb, g_rs.gpend); if (cmp) { std::swap(buf, g_rs.pend); g_rs.dbg_lst = in.lst; g_rs.dbg_pal = in.pal3d; } g_rs.cmp_sw = cmp; g_rs.pw = w; g_rs.ph = h; g_rs.fresh = true; g_rs.unlock();
             continue;

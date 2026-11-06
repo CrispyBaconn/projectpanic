@@ -38,6 +38,9 @@ open in the HOME Menu), the game stops at once and says so: close the other app 
 The main game CPU (R4650) and the H8 are emulated on the 804 MHz ARM11 cores, so the game may run slower than the real one.
 The bottom screen (option "Statistics") and `log.txt` (`PERF 3DS` lines) show where the time goes:
 gather (text layer), geo (polygon preparation), cells (clipping and texture uploads), submit (GPU commands), GPU and wait.
+To measure geo and cells on PC with real scenes: run the PC version with `S23_PICADUMP=<folder>` (it saves the 3D lists)
+and then `tools/bench_pica.cpp` (instructions at the top of the file); it also prints a checksum of the vertices and
+textures, so an optimisation can be checked to give exactly the same result.
 
 ## What has and hasn't been verified
 - Done: the `pica3d.h` renderer was tested on PC with fixed-function OpenGL (same combiners as the PICA200,

@@ -46,21 +46,22 @@ struct KeyHash { size_t operator()(const Key& k) const {
     uint64_t h = 1469598103934665603ull; auto mix = [&](uint64_t v) { h = (h ^ v) * 1099511628211ull; };
     mix((uint32_t)k.cu); mix((uint32_t)k.cv); mix(k.pens); mix(k.tbase); mix(k.cmode | (k.apen << 8) | (k.sten << 16) | ((uint32_t)k.lvl << 24)); return (size_t)h; } };
 
-// backend: loads the contents of a slot (CELL x CELL, 8-bit-per-channel RGBA in a uint32 0xRRGGBBAA, row 0 =
-// lowest texel v) and of the text layer (tw x th, same format)
+// backend: loads the contents of a slot (CELL x CELL, RGBA5551 like the PICA200 texture format: bits 15-11 red,
+// 10-6 green, 5-1 blue, 0 alpha; row-major, row 0 = lowest texel v)
 // Slots can live in a few big textures (atlases): this way polygons close together in drawing order that use
 // different slots of the same atlas end up in the same draw call.
+static inline uint16_t rgba5551(uint32_t rgba) { return (uint16_t)((((rgba >> 27) & 31) << 11) | (((rgba >> 19) & 31) << 6) | (((rgba >> 11) & 31) << 1) | ((rgba & 0xff) >= 128 ? 1 : 0)); }
 struct SlotMap { float s0, ds, t0, dt; };          // final coordinates = (s0 + ls * ds, t0 + lt * dt), ls/lt in [0,1] within the cell
 struct Backend {
     virtual ~Backend() {}
-    virtual void upload_slot(int slot, const uint32_t* rgba) = 0;
+    virtual void upload_slot(int slot, const uint16_t* rgba5551) = 0;
     virtual bool flip_t() const = 0;               // true: t = 1 at the bottom (PICA200), false: OpenGL
     virtual int tex_of(int slot) const { return slot; }          // GPU texture (atlas) of the slot
     virtual int slots_per_tex() const { return 1; }              // slots per atlas (the slots of an atlas are consecutive)
     virtual SlotMap slot_map(int) const { return flip_t() ? SlotMap{0, 1, 1, -1} : SlotMap{0, 1, 0, 1}; }
 };
 
-struct Stats { unsigned polys = 0, tris = 0, batches = 0, new_slots = 0, cells = 0, dropped = 0; };
+struct Stats { unsigned polys = 0, tris = 0, batches = 0, new_slots = 0, cells = 0, dropped = 0, reloads = 0, evicted = 0; };
 
 class Renderer {
 public:
@@ -79,15 +80,19 @@ public:
         // changed palettes (in blocks of 256 colours, like the polygons' pens)
         for (int b = 0; b < 128; b++) if (memcmp(&pal_prev[b * 256], &pal3d[b * 256], 256 * 4)) { memcpy(&pal_prev[b * 256], &pal3d[b * 256], 256 * 4); pal_stamp[b] = frame; }
         pal = pal3d;
-        bool sten_checked = false;
+        bool sten_checked = false; int wk[4] = {-99999, 0, 0, 0}; float wv[6] = {0, 0, 0, 0, 0, 0};
         const int HH = (int)std::lround(480 * sc), WW = (int)std::lround(640 * sc);
         for (int oi : order) {
             const g3d::Poly& p = F.polys[oi]; const g3d::RD& rd = p.rd;
             if (rd.stencil && !sten_checked) { sten_checked = true; check_stencil(); }
             // window (like gl3d::export_polys / gpu3d scanline)
-            const float cl = std::lround(((320 - rd.vp_sx) + rd.vp_ox) * sc) + xoff, cr = std::lround(((320 + rd.vp_sx) + rd.vp_ox) * sc) + xoff;
-            const float ct = std::lround(((240 - rd.vp_sy) - rd.vp_oy) * sc) + yoff, cb = std::lround(((240 + rd.vp_sy) - rd.vp_oy) * sc) + yoff;
-            const float xorg = cl, x0 = std::max({cl, xoff, xorg}), x1 = std::min({cr, xoff + WW, xorg + WW, W}), y0 = std::max({ct, yoff}), y1 = std::min({cb, yoff + HH, ct + HH, H});
+            if (rd.vp_sx != wk[0] || rd.vp_sy != wk[1] || rd.vp_ox != wk[2] || rd.vp_oy != wk[3]) {   // same window as the previous polygon: usual
+                wk[0] = rd.vp_sx; wk[1] = rd.vp_sy; wk[2] = rd.vp_ox; wk[3] = rd.vp_oy;
+                const float cl = std::lround(((320 - rd.vp_sx) + rd.vp_ox) * sc) + xoff, cr = std::lround(((320 + rd.vp_sx) + rd.vp_ox) * sc) + xoff;
+                const float ct = std::lround(((240 - rd.vp_sy) - rd.vp_oy) * sc) + yoff, cb = std::lround(((240 + rd.vp_sy) - rd.vp_oy) * sc) + yoff;
+                wv[0] = cl; wv[1] = ct; wv[2] = std::max({cl, xoff, cl}); wv[3] = std::min({cr, xoff + WW, cl + WW, W}); wv[4] = std::max({ct, yoff}); wv[5] = std::min({cb, yoff + HH, ct + HH, H});
+            }
+            const float xorg = wv[0], ct = wv[1], x0 = wv[2], x1 = wv[3], y0 = wv[4], y1 = wv[5];
             if (x0 >= x1 || y0 >= y1) continue;
             st.polys++;
             // vertices in linear homogeneous eye-space coordinates: (x*Z, y*Z, Z, u, v, i)
@@ -148,12 +153,14 @@ private:
     std::vector<Key> slot_key; std::vector<uint8_t> slot_valid; std::vector<uint32_t> slot_used, slot_born;
     std::vector<uint32_t> pal_prev, pal_stamp; uint32_t frame = 1, sten_stamp = 0; std::vector<uint16_t> sten_prev;
     const uint32_t* pal = nullptr;
-    uint32_t texbuf[CELL * CELL];
+    uint16_t texbuf[CELL * CELL];
 
     // keeps the part where  s*a[i] + d*a[j] (+ off if j<0) >= 0 ; j = 2 (Z) for the screen planes
     static void clip(PolyV& p, int i, int j, float d, float s) {
         if (p.size() < 3) return;
         auto f = [&](const HV& h) { return s * h.a[i] + (j >= 0 ? d * h.a[j] : d); };
+        {   bool in = true; for (int k = 0; k < p.n && in; k++) in = f(p.v[k]) >= 0;          // usual case: nothing to cut
+            if (in) return; }
         PolyV o;
         for (size_t k = 0; k < p.size(); k++) {
             const HV& A = p[k]; const HV& B = p[(k + 1) % p.size()];
@@ -224,7 +231,7 @@ private:
         if (it != map.end()) {
             const int s = it->second;
             if (slot_born[s] >= pal_stamp[pb] && (!k.sten || slot_born[s] >= sten_stamp)) { slot_used[s] = frame; return s; }
-            fill(s, k); slot_born[s] = frame; slot_used[s] = frame; st.new_slots++; return s;   // palette changed: reload
+            fill(s, k); slot_born[s] = frame; slot_used[s] = frame; st.new_slots++; st.reloads++; return s;   // palette changed: reload
         }
         int best = -1; uint32_t bu = 0xffffffffu;                                                 // free slot or least recently used
         // preference: the same atlas as the previous batch (if it has a free slot or one unused for at least 2 frames),
@@ -237,25 +244,37 @@ private:
         }
         if (best < 0) for (int s = 0; s < nslots; s++) { if (!slot_valid[s]) { best = s; break; } if (slot_used[s] != frame && slot_used[s] < bu) { bu = slot_used[s]; best = s; } }
         if (best < 0) return -1;
-        if (slot_valid[best]) map.erase(slot_key[best]);
+        if (slot_valid[best]) { map.erase(slot_key[best]); st.evicted++; }
         slot_key[best] = k; slot_valid[best] = 1; map[k] = best;
         fill(best, k); slot_born[best] = frame; slot_used[best] = frame; st.new_slots++;
         return best;
     }
+    // the cell's texels: a row of a 16x16 tile of the texture space comes from 16 consecutive (or, for rotated tiles,
+    // 16-apart) bytes of the texture ROM, so the tilemap is read once per tile row and the palette once per cell
+    // (256-entry table already in the GPU format). Same result as g3d::tex_lookup texel by texel.
     void fill(int s, const Key& k) {
         u32 pens = k.pens; int penmask = 0xff, penshift = 0;
         if (k.cmode & 4) { pens += 0xec + ((k.cmode & 8) << 1); penmask = 3; penshift = 2 * (~k.cmode & 3); }
         else if (k.cmode & 2) { pens += 0xe0 + ((k.cmode & 8) << 1); penmask = 0xf; penshift = 4 * (~k.cmode & 1); }
-        const int st = 1 << k.lvl; const int32_t bu = k.cu * (CELL << k.lvl), bv = k.cv * (CELL << k.lvl);
+        uint16_t lut[256];
+        for (int p = 0; p < 256; p++) {
+            const u32 rgb = pal[(pens + ((p >> penshift) & penmask)) & 0x7fff];
+            lut[p] = rgba5551((rgb << 8) | ((!k.sten && p == k.apen) ? 0u : 255u));      // "alpha pen": takes the polygon's alpha
+        }
+        const g3d::Rom& R = g3d::R; const u8* rom = R.texrom; const u32 tidm = R.tileid_mask;
+        const int st = 1 << k.lvl, run = std::max(1, 16 >> k.lvl); const int32_t bu = k.cu * (CELL << k.lvl), bv = k.cv * (CELL << k.lvl);
         for (int y = 0; y < CELL; y++) {
-            const u32 ty = (u32)(bv + y * st);
-            for (int x = 0; x < CELL; x++) {
-                const u32 tx = (u32)(bu + x * st); u8 pen = 0;
-                uint32_t a = 255;
-                if (k.sten && g3d::stencil_lookup(tx, ty)) a = 0;
-                const u32 rgb = g3d::tex_lookup(pal, pens, penshift, penmask, tx, ty + k.tbase, pen);
-                if (!k.sten && pen == k.apen) a = 0;                     // "alpha pen": takes the polygon's alpha
-                texbuf[y * CELL + x] = (rgb << 8) | a;
+            const u32 ty = (u32)(bv + y * st), v = ty + k.tbase; uint16_t* o = texbuf + y * CELL;
+            for (int x = 0; x < CELL; x += run) {
+                const u32 u = (u32)(bu + x * st), tileid = ((u >> 4) & 0xff) | ((v << 4) & tidm);
+                const u32 tile = R.tm_decoded[tileid], attr = R.tm_attr[tileid], vv = (attr & 1) ? ~v : v;
+                const bool fu = (attr & 2) != 0, sw = (attr & 4) != 0;
+                // u is a multiple of 16: within the tile row the texel j is at 16ths (rotated tile) or units, maybe mirrored
+                const u32 base = (sw ? (tile | (vv & 15)) : (tile | ((vv << 4) & 0xf0))) & 0x1ffffff;
+                const int unit = sw ? 16 : 1, step = (fu ? -st : st) * unit;
+                const u8* src = rom + base + (fu ? 15 * unit : 0); uint16_t* d = o + x;
+                if (!k.sten) { for (int j = 0; j < run; j++) d[j] = lut[src[j * step]]; }
+                else for (int j = 0; j < run; j++) { uint16_t c = lut[src[j * step]]; if (g3d::stencil_lookup(u + j * st, ty)) c &= 0xfffe; d[j] = c; }
             }
         }
         be->upload_slot(s, texbuf);

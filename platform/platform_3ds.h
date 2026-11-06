@@ -51,9 +51,10 @@ namespace n3ds {
 
 // ---------------------------------------------------------------- textures in the GPU format
 // 8x8 tiles in Morton order; row 0 in memory is the top one (t = 1)
-static inline u32 morton(u32 x, u32 y) { static const u8 xl[8] = {0, 1, 4, 5, 16, 17, 20, 21}, yl[8] = {0, 2, 8, 10, 32, 34, 40, 42}; return xl[x & 7] + yl[y & 7]; }
+static const u8 MORTON_Y[8] = {0, 2, 8, 10, 32, 34, 40, 42};
+static inline u32 morton(u32 x, u32 y) { static const u8 xl[8] = {0, 1, 4, 5, 16, 17, 20, 21}; return xl[x & 7] + MORTON_Y[y & 7]; }
 static inline u32 tex_off(u32 x, u32 y, u32 w) { return (y & ~7u) * w + (x & ~7u) * 8 + morton(x, y); }   // in texel
-static inline u16 rgba5551(u32 rgba) { return (u16)((((rgba >> 27) & 31) << 11) | (((rgba >> 19) & 31) << 6) | (((rgba >> 11) & 31) << 1) | ((rgba & 0xff) >= 128 ? 1 : 0)); }
+using pica::rgba5551;
 
 // the slots live in 1024x1024 atlases (64 slots of 128x128 each): consecutive polygons with cells in the same
 // atlas are drawn with a single call (with one texture per slot it was ~2000 calls per frame)
@@ -76,10 +77,18 @@ struct C3DBackend : pica::Backend {
         }
         nslots = (int)tex.size() * PER; return nslots;
     }
-    void upload_slot(int s, const uint32_t* rgba) override {
+    std::vector<uint8_t> dirty;                          // atlases written by the CPU: their cache lines must reach memory
+    void upload_slot(int s, const uint16_t* p) override {
         u16* d = (u16*)tex[s / PER].data; const int C = pica::CELL, i = s % PER, ox = (i % ROW) * C, oy = (i / ROW) * C;
-        for (int y = 0; y < C; y++) { const uint32_t* r = rgba + y * C; for (int x = 0; x < C; x++) d[tex_off(ox + x, oy + y, SIDE)] = rgba5551(r[x]); }
+        for (int y = 0; y < C; y++) {
+            const uint16_t* r = p + y * C; u16* row = d + ((oy + y) & ~7u) * SIDE + ox * 8; const u8* yl = MORTON_Y + ((oy + y) & 7);
+            for (int x = 0; x < C; x += 8) { u16* t = row + x * 8; const uint16_t* q = r + x;
+                t[0 + *yl] = q[0]; t[1 + *yl] = q[1]; t[4 + *yl] = q[2]; t[5 + *yl] = q[3]; t[16 + *yl] = q[4]; t[17 + *yl] = q[5]; t[20 + *yl] = q[6]; t[21 + *yl] = q[7]; }
+        }
+        if (dirty.size() < tex.size()) dirty.resize(tex.size(), 0);
+        dirty[s / PER] = 1;
     }
+    void flush() { for (size_t i = 0; i < dirty.size(); i++) if (dirty[i]) { GSPGPU_FlushDataCache(tex[i].data, tex[i].size); dirty[i] = 0; } }
 };
 
 // ---------------------------------------------------------------- drawing state
@@ -217,6 +226,9 @@ static void draw_game(const FrameIn& in, const g3d::Frame& F, const std::vector<
     const int nadd = n; const bool gam_add = G.b[0] > 0.01f || G.b[1] > 0.01f || G.b[2] > 0.01f;
     if (gam_add) n = quad_col(n, X0, Y0, X0 + 320, Y0 + 240, cl(G.b[0]) << 24 | cl(G.b[1]) << 16 | cl(G.b[2]) << 8 | 0xff);
 
+    // the CPU wrote vertices and textures through the data cache: send them to memory before the GPU reads them
+    G.be.flush(); GSPGPU_FlushDataCache(G.vbo, sizeof(pica::V) * n);
+    if (text_new && G.text_ok) GSPGPU_FlushDataCache(G.text.data, G.text.size);
     C2D_TargetClear(G.top, C2D_Color32(0, 0, 0, 255)); C3D_FrameDrawOn(G.top);
     bind_3d();
     env_color(); C3D_AlphaBlend(GPU_BLEND_ADD, GPU_BLEND_ADD, GPU_ONE, GPU_ZERO, GPU_ONE, GPU_ZERO); C3D_DrawArrays(GPU_TRIANGLES, 0, 6);
