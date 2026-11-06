@@ -281,10 +281,13 @@ YEL, ORA, RED, GRN = '#ffd23f', '#ff8c1a', '#e8322b', '#3ccf6e'
 # ------------------------------------------------------------------------------------------------ build steps
 class Cancelled(Exception): pass
 
-NEWGROUP = dict(creationflags=subprocess.CREATE_NEW_PROCESS_GROUP) if WIN else dict(start_new_session=True)
+# Windows: the tools run without a console window of their own (started from pythonw, or by double-clicking the .py, every
+# compiler process would open one)
+NOWIN = dict(creationflags=0x08000000) if WIN else {}                   # CREATE_NO_WINDOW
+NEWGROUP = dict(creationflags=subprocess.CREATE_NEW_PROCESS_GROUP | 0x08000000) if WIN else dict(start_new_session=True)
 def kill_tree(p):
     try:
-        if WIN: subprocess.run(['taskkill', '/T', '/F', '/PID', str(p.pid)], capture_output=True)
+        if WIN: subprocess.run(['taskkill', '/T', '/F', '/PID', str(p.pid)], capture_output=True, **NOWIN)
         else: os.killpg(p.pid, signal.SIGTERM)
     except Exception: pass
 
@@ -323,7 +326,7 @@ class Worker(threading.Thread):
 
     def pip(self, step, module, package):
         """Makes sure a Python module is there, installing it for this user with pip if needed."""
-        test = lambda: subprocess.run([sys.executable, '-c', 'import ' + module], capture_output=True).returncode == 0
+        test = lambda: subprocess.run([sys.executable, '-c', 'import ' + module], capture_output=True, **NOWIN).returncode == 0
         if test(): return True
         # recent Ubuntu refuses pip without --break-system-packages (with --user it only touches this user's packages)
         for extra in ([], ['--break-system-packages']):
@@ -406,6 +409,14 @@ class Worker(threading.Thread):
                 done += 1; self.q.put(('pct', step, 0.3 + 0.65 * done / total))
         if self.cancel: raise Cancelled()
         if err: self.last = err; return False
+        # every object must be there: an antivirus can remove a freshly written .o (then the link misses its functions)
+        for s in srcs:
+            if not (os.path.isfile(obj(s)) and os.path.getsize(obj(s)) > 0):
+                self.log('  ' + os.path.relpath(obj(s), ROOT) + ' missing: compiling it again')
+                rc, o = self.compile([cxx] + flags + ['-c', s, '-o', obj(s)])
+                if rc or not os.path.isfile(obj(s)) or os.path.getsize(obj(s)) == 0:
+                    self.last = os.path.relpath(obj(s), ROOT) + ' was not created (antivirus? add the project folder to its exclusions) ' + o.strip()[:200]
+                    return False
         sdl_inc = os.path.join(sdl, 'include', 'SDL2'); sdl_lib = os.path.join(sdl, 'lib')
         rc, o = self.compile([cxx, '-std=c++17', '-O2', '-w', '-I.', '-Igen_full', '-DUSE_SDL', '-I' + sdl_inc,
                               '-c', 'platform/platform_stub.cpp', '-o', os.path.join(bd, 'platform_stub.o')])
@@ -423,7 +434,7 @@ class Worker(threading.Thread):
             rc, o = self.compile([wr, os.path.join(bd, 'icon.rc'), '-O', 'coff', '-o', res])
             self.log('icon: ' + ('ok' if rc == 0 else o.strip()))
             if rc and os.path.isfile(res): os.remove(res)
-        objs = sorted(glob.glob(os.path.join(bd, '*.o')))
+        objs = [obj(s) for s in srcs] + [os.path.join(bd, 'platform_stub.o')] + ([res] if os.path.isfile(res) else [])
         link = [cxx] + objs + ['-o', os.path.join(out, 'PanicPark.exe'), '-mconsole', '-static'] + \
                ([] if clang else ['-static-libgcc', '-static-libstdc++']) + \
                ['-L' + sdl_lib, '-Wl,-Bstatic', '-lSDL2', '-lwinpthread', '-lsetupapi', '-lwinmm', '-limm32', '-lversion',
@@ -467,7 +478,7 @@ class Worker(threading.Thread):
                 self.pip(step, 'py7zr', 'py7zr')
                 self.log('py7zr: ' + self.archive)
                 r = subprocess.run([sys.executable, '-c', 'import py7zr,sys; py7zr.SevenZipFile(sys.argv[1]).extractall(sys.argv[2])',
-                                    self.archive, tmp], capture_output=True, text=True)
+                                    self.archive, tmp], capture_output=True, text=True, **NOWIN)
                 if r.returncode: self.log(r.stdout + r.stderr); raise RuntimeError(self.t['no7z'])
         src = None                                          # the folder that holds the ROM files (maybe a subfolder)
         for d, _, files in os.walk(tmp):
