@@ -7,6 +7,17 @@ Runs on Windows, Linux, Android, Nintendo Switch, Wii U and New 3DS.
 This repository contains no game code or data: everything is generated from **your own** Panic Park ROM set.
 Not affiliated with Bandai Namco. License: BSD-3-Clause (parts derived from MAME, see `LICENSE`).
 
+## Easy way: Project Panic Builder
+
+A window that does everything below for you: choose your `panicprk.7z` (or `.zip`), tick the devices, press **BUILD**
+and follow the percentage. Devices whose tools are not installed are greyed out, with the command to install them.
+
+- **Windows**: double-click `ProjectPanicBuilder.bat` (it runs inside WSL; needs Windows 11 or WSLg).
+- **Linux / WSL**: `sh tools/builder.sh`
+
+The first time install Tk for Python in WSL/Linux: `sudo apt install python3-tk p7zip-full`.
+The results end up in `dist/`, as with the manual steps.
+
 ## 1. Generate the code (all platforms)
 
 You need the Panic Park ROM set **`panicprk.7z`** (not included). Extract it into a `panicprkrom/` folder inside the

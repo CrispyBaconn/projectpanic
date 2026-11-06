@@ -34,7 +34,11 @@ if [ "$1" = "setup" ]; then
 fi
 
 [ -d "$ANDROID_HOME/ndk/$NDK_VER" ] || { echo "Android SDK/NDK missing: first run  bash platform/build_android.sh setup"; exit 1; }
-[ -d platform/SDL2-src/android-project ] || { echo "platform/SDL2-src missing (SDL2 sources)"; exit 1; }
+if [ ! -d platform/SDL2-src/android-project ]; then                 # SDL2 sources (first time only)
+  SDLV=2.30.9; echo "downloading the SDL2 $SDLV sources..."
+  mkdir -p deps && curl -sSfL -o deps/SDL2-src.tar.gz https://github.com/libsdl-org/SDL/releases/download/release-$SDLV/SDL2-$SDLV.tar.gz
+  tar xzf deps/SDL2-src.tar.gz -C deps && rm -rf platform/SDL2-src && mv deps/SDL2-$SDLV platform/SDL2-src
+fi
 command -v java >/dev/null || { echo "Java missing: sudo apt install openjdk-17-jdk"; exit 1; }
 
 # ---- project: copy of SDL's template (first time only), then our files are rewritten every time

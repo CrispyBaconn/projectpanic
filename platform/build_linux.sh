@@ -20,10 +20,11 @@ mkdir -p $OUT/lang && cp platform/lang/*.json $OUT/lang/          # menu transla
 if ls platform/ui/*.png >/dev/null 2>&1; then mkdir -p $OUT/ui && cp platform/ui/*.png $OUT/ui/; fi   # menu background and logo (optional)
 cat > $OUT/run.sh <<'EOF'
 #!/bin/sh
-# Starts Panic Park. Without arguments it looks for panicprk_main.elf, main_r4650_BE_4MB.bin and the ROMs in the current folder.
-# ROMDIR=folder to say where the ROMs are.
+# Starts Panic Park. It looks for panicprk_main.elf and main_r4650_BE_4MB.bin in this folder and for the ROMs in
+# panicprkrom/ (or in this folder). ROMDIR=folder to say where the ROMs are.
 cd "$(dirname "$0")"
-S23_WINDOW=1 exec ./panicprk panicprk_main.elf main_r4650_BE_4MB.bin 1000000000 0 "${ROMDIR:-.}"
+[ -z "$ROMDIR" ] && { [ -d panicprkrom ] && ROMDIR=panicprkrom || ROMDIR=.; }
+S23_WINDOW=1 exec ./panicprk panicprk_main.elf main_r4650_BE_4MB.bin 1000000000 0 "$ROMDIR"
 EOF
 chmod +x $OUT/run.sh
 echo "BUILD_OK -> $OUT/panicprk"
