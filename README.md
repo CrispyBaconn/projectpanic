@@ -9,18 +9,30 @@ Not affiliated with Bandai Namco. License: BSD-3-Clause (parts derived from MAME
 
 ## Easy way: Project Panic Builder
 
-A window that does everything below for you: choose your `panicprk.7z` (or `.zip`), tick the devices, press **BUILD**
-and follow the percentage. Devices whose tools are missing are greyed out, with what to install.
+`ProjectPanicBuilder.py` is a window that does all the steps below for you, on **Windows** and **Linux** alike:
 
-- **Windows** (no WSL needed): install [Python 3](https://www.python.org/downloads/) (tick "Add python.exe to PATH"),
-  then double-click `ProjectPanicBuilder.bat`. The first Windows build downloads the compiler (LLVM-MinGW) by itself.
+1. choose your `panicprk.7z` (or `.zip`),
+2. tick the devices,
+3. press **BUILD** and follow the percentage.
+
+| Choose the ROM and the devices | Building | Done |
+|---|---|---|
+| ![Builder: start](docs/builder_start.png) | ![Builder: building](docs/builder_progress.png) | ![Builder: done](docs/builder_done.png) |
+
+Start it:
+- **Windows**: install [Python 3](https://www.python.org/downloads/) (tick "Add python.exe to PATH"), then double-click
+  `ProjectPanicBuilder.py`. No WSL needed: the first Windows build downloads the compiler (LLVM-MinGW) by itself.
   Switch, Wii U and 3DS also work from Windows with the [devkitPro installer](https://devkitpro.org/wiki/Getting_Started);
   Linux and Android builds need Linux or WSL.
-- **Linux / WSL**: `sudo apt install python3-tk p7zip-full`, then `sh tools/builder.sh`.
+- **Linux / WSL**: `sudo apt install python3-tk p7zip-full`, then `python3 ProjectPanicBuilder.py`.
 
-The results end up in `dist/`, as with the manual steps.
+Devices whose tools are missing are greyed out, with what to install. If a build fails the window says why, and
+"Show details" opens the full log. The results end up in `dist/`; "Open the dist folder" opens it.
+The window is in English; the button at the top right switches to Italian.
 
-## 1. Generate the code (all platforms)
+## Manual build
+
+### 1. Generate the code (all platforms)
 
 You need the Panic Park ROM set **`panicprk.7z`** (not included). Extract it into a `panicprkrom/` folder inside the
 project, so that `panicprkrom/` directly contains the ROM files (`pnp2vera.ic1`, `pnp2vera.ic2`, `pnp1cgll.4m`, ...). Then:
@@ -36,7 +48,7 @@ python3 mips2cpp.py --elf panicprk_main.elf --funcs functions.csv --out gen_full
 `extract_rom.py` joins the two halves of the main program ROM (`pnp2vera.ic2` + `pnp2vera.ic1`) into
 `main_r4650_BE_4MB.bin` and takes the game's executable (`panicprk_main.elf`) out of it.
 
-## 2. Build
+### 2. Build
 
 All builds run on Linux or WSL. The result ends up in `dist/`.
 
@@ -51,7 +63,7 @@ All builds run on Linux or WSL. The result ends up in `dist/`.
 
 `bash platform/build_all.sh` builds Windows, Switch, Wii U and Android in one go.
 
-## 3. Run
+### 3. Run
 
 Copy `panicprk_main.elf`, `main_r4650_BE_4MB.bin` and a `panicprkrom/` folder with all the Panic Park ROMs next to the program.
 

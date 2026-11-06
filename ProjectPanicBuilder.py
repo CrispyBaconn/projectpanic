@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Project Panic Builder: a small window that turns your Panic Park ROM set into the game for the devices you pick.
 
-    Windows:      double-click ProjectPanicBuilder.bat (needs Python 3 from python.org; no WSL needed)
-    Linux / WSL:  sh tools/builder.sh   (needs  sudo apt install python3-tk)
+    Windows:      double-click ProjectPanicBuilder.py   (needs Python 3 from python.org; no WSL needed)
+    Linux / WSL:  python3 ProjectPanicBuilder.py      (needs  sudo apt install python3-tk)
 
 On Windows without WSL the Windows build is done here in Python with LLVM-MinGW (downloaded the first time), and the
 Switch / Wii U / 3DS builds run the same scripts through the bash of the devkitPro installer. Linux and Android
@@ -13,10 +13,14 @@ Steps: extract the ROM archive (.zip or .7z) into panicprkrom/, rebuild panicprk
 """
 import glob, json, os, queue, re, shutil, signal, subprocess, sys, tarfile, threading, time, urllib.request, zipfile
 from concurrent.futures import ThreadPoolExecutor, as_completed
-import tkinter as tk
-from tkinter import ttk, filedialog, messagebox
+try:
+    import tkinter as tk
+    from tkinter import ttk, filedialog, messagebox
+except ImportError:                                    # Linux without Tk for Python
+    print('The builder window needs Tk for Python:  sudo apt install python3-tk')
+    sys.exit(1)
 
-ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+ROOT = os.path.dirname(os.path.abspath(__file__))
 CFG = os.path.join(os.path.expanduser('~'), '.projectpanic_builder.json')
 WIN = os.name == 'nt'
 FONT, MONO = ('Segoe UI', 'Consolas') if WIN else ('DejaVu Sans', 'DejaVu Sans Mono')
@@ -604,9 +608,17 @@ class App:
         elif have('xdg-open'): subprocess.Popen(['xdg-open', d])
 
 def main():
-    root = tk.Tk()
-    App(root)
-    root.mainloop()
+    try:
+        root = tk.Tk()
+    except tk.TclError as ex:                          # e.g. Linux without a display
+        print(f'Cannot open the window: {ex}'); sys.exit(1)
+    try:
+        App(root)
+        root.mainloop()
+    except Exception:                                  # started with a double click: show the error instead of closing
+        import traceback; err = traceback.format_exc(); print(err)
+        try: messagebox.showerror('Project Panic Builder', err)
+        except Exception: pass
 
 if __name__ == '__main__':
     main()
