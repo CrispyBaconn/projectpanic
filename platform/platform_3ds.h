@@ -142,9 +142,10 @@ static bool init(const std::string& uidir) {
     G.uProj = shaderInstanceGetUniformLocation(G.prog.vertexShader, "projection");
     Mtx_OrthoTilt(&G.proj, 0.f, 400.f, 240.f, 0.f, 0.f, 1.f, true);      // pixels with y at the bottom, z in [-w, 0]
     G.vmax = 26000; G.vbo = (pica::V*)linearAlloc(sizeof(pica::V) * G.vmax);
-    // texture atlases of 1024x1024 (2 MB, 64 cells each): as many as fit leaving ~7 MB of linear memory for the rest
-    // (4 MB of main RAM, buffers); 3 at least. With 3 (192 cells) busy scenes evicted and even dropped cells.
-    const int natl = std::max(3, std::min(5, (int)(((int64_t)linearSpaceFree() - (7 << 20)) / (2 << 20))));
+    // texture atlases of 1024x1024 (2 MB, 64 cells each): 4 (256 cells) if they leave ~10.5 MB of linear memory for
+    // the rest (4 MB of main RAM, tm.bin 5 MB, buffers), else 3. With 3 busy scenes evicted and dropped cells;
+    // 5 left tm.bin in the normal heap, which then ran out while playing.
+    const int natl = std::max(3, std::min(4, (int)(((int64_t)linearSpaceFree() - (21 << 19)) / (2 << 20))));   // 10.5 MB kept
     int slots = G.be.init(natl * C3DBackend::PER); if (slots <= 0) return false;
     G.pr.init(&G.be, slots); G.pr.clock_ns = now_ns;
     G.text_ok = C3D_TexInit(&G.text, 512, 256, GPU_RGBA5551); if (G.text_ok) { C3D_TexSetFilter(&G.text, GPU_NEAREST, GPU_NEAREST); memset(G.text.data, 0, 512 * 256 * 2); }
