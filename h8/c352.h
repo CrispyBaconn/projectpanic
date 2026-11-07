@@ -4,6 +4,7 @@
 // (16934400 Hz -> exactly 192 cycles per sample) and the output goes into a 44100 Hz stereo buffer.
 #pragma once
 #include <cstdint>
+#include <algorithm>
 #include <cstring>
 #include <vector>
 #include <string>
@@ -123,43 +124,49 @@ public:
     }
     static void ramp(Voice& x, int ch, uint8_t val) { int d = x.curr_vol[ch] - val; if (d) x.curr_vol[ch] += d > 0 ? -1 : 1; }
 
-    void one_sample() {
-#ifdef __3DS__
-        const bool mix = half == 1;           // 3DS: the voices advance at 88200 Hz but are mixed one step in two (44100 Hz,
+    // n samples at 88200 Hz (n <= BLK), voice by voice: the state of a voice stays in registers for the whole block
+    // instead of going through the 32 voices at every sample (same result; only the shared noise generator is
+    // advanced in a different order between noise voices)
+    static constexpr int BLK = 256;
+    int bo[4][BLK];
+    void render(int n) {
+#if defined(__3DS__) || defined(S23_LIGHT_H8)
+        const bool light = true;              // 3DS: the voices advance at 88200 Hz but are mixed one step in two (44100 Hz,
 #else                                         // the output rate anyway): the H8 thread must fit in 80% of the system core
-        const bool mix = true;
+        const bool light = false;
 #endif
-        int o[4] = {0, 0, 0, 0};
+        const int h0 = half;
+        for (int k = 0; k < 4; k++) memset(bo[k], 0, sizeof(int) * n);
         for (auto& x : v) {
             if (!(x.flags & BUSY)) continue;                         // stopped voice: no contribution (current volumes restart from 0 at key on)
-            int s = 0;
-            {
+            for (int i = 0; i < n; i++) {
                 int32_t next = (int32_t)(x.counter + x.freq);
                 if (next & 0x10000) fetch(x);
                 if ((next ^ (int32_t)x.counter) & 0x18000) { ramp(x, 0, x.vol_f >> 8); ramp(x, 1, x.vol_f & 0xff); ramp(x, 2, x.vol_r >> 8); ramp(x, 3, x.vol_r & 0xff); }
                 x.counter = (uint32_t)next & 0xffff;
-                if (!mix) continue;
-                s = x.sample;
-                if (!(x.flags & FILTER)) s = x.last_sample + (int)(((int64_t)x.counter * (x.sample - x.last_sample)) >> 16);
+                if (!light || ((h0 + i) & 1)) {
+                    int s = x.sample;
+                    if (!(x.flags & FILTER)) s = x.last_sample + (int)(((int64_t)x.counter * (x.sample - x.last_sample)) >> 16);
+                    bo[0][i] += (((x.flags & PHASEFL) ? -s : s) * x.curr_vol[0]) >> 8;
+                    bo[2][i] += (((x.flags & PHASERL) ? -s : s) * x.curr_vol[2]) >> 8;
+                    bo[1][i] += (((x.flags & PHASEFR) ? -s : s) * x.curr_vol[1]) >> 8;
+                    bo[3][i] += (((x.flags & PHASEFR) ? -s : s) * x.curr_vol[3]) >> 8;
+                }
+                if (!(x.flags & BUSY)) break;                        // ended in this sample: silent from the next one
             }
-            o[0] += (((x.flags & PHASEFL) ? -s : s) * x.curr_vol[0]) >> 8;
-            o[2] += (((x.flags & PHASERL) ? -s : s) * x.curr_vol[2]) >> 8;
-            o[1] += (((x.flags & PHASEFR) ? -s : s) * x.curr_vol[1]) >> 8;
-            o[3] += (((x.flags & PHASEFR) ? -s : s) * x.curr_vol[3]) >> 8;
         }
         // like MAME: outputs 0/2 left, 1/3 right, each saturated to 16 bits after >>3
         auto sat = [](int a) { return a < -32768 ? -32768 : a > 32767 ? 32767 : a; };
-        int l = sat(o[0] >> 3) + sat(o[2] >> 3), r = sat(o[1] >> 3) + sat(o[3] >> 3);
-#ifdef __3DS__
-        if (++half == 2) { half = 0; out.push_back((int16_t)sat(l)); out.push_back((int16_t)sat(r)); if (out.size() >= 1024) flush(); }
-#else
-        acc_l += l; acc_r += r;
-        if (++half == 2) {
-            half = 0;
-            out.push_back((int16_t)sat(acc_l / 2)); out.push_back((int16_t)sat(acc_r / 2)); acc_l = acc_r = 0;
-            if (out.size() >= 1024) flush();
+        for (int i = 0; i < n; i++) {
+            int l = sat(bo[0][i] >> 3) + sat(bo[2][i] >> 3), r = sat(bo[1][i] >> 3) + sat(bo[3][i] >> 3);
+            if (light) { if (++half == 2) { half = 0; out.push_back((int16_t)sat(l)); out.push_back((int16_t)sat(r)); if (out.size() >= 1024) flush(); } continue; }
+            acc_l += l; acc_r += r;
+            if (++half == 2) {
+                half = 0;
+                out.push_back((int16_t)sat(acc_l / 2)); out.push_back((int16_t)sat(acc_r / 2)); acc_l = acc_r = 0;
+                if (out.size() >= 1024) flush();
+            }
         }
-#endif
     }
     void flush() { if (sink && !out.empty()) sink(out.data(), out.size() / 2); out.clear(); }
 
@@ -168,7 +175,10 @@ public:
         if (!ok()) { last_cycle = cycle; return; }
         if (cycle < last_cycle) { last_cycle = cycle; return; }
         if (cycle - last_cycle > 16934400ull) last_cycle = cycle - 16934400ull;   // after a long pause it catches up at most 1 s
-        while (cycle - last_cycle >= CYCLES_PER_SAMPLE) { one_sample(); last_cycle += CYCLES_PER_SAMPLE; }
+        while (cycle - last_cycle >= CYCLES_PER_SAMPLE) {
+            const int n = (int)std::min<uint64_t>(BLK, (cycle - last_cycle) / CYCLES_PER_SAMPLE);
+            render(n); last_cycle += (uint64_t)n * CYCLES_PER_SAMPLE;
+        }
     }
     void reset() { for (auto& x : v) x = Voice(); control = 0; random = 0x1234; }
 };

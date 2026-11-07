@@ -599,7 +599,10 @@ static void* h8_thread(void*) {
         auto sync = [&](uint64_t to) { g_h8->run_to(to); if (g_asca) g_asca->run_to(acyc0 + (uint64_t)((to - cyc0) * ratio)); };
         if (g_jvs) g_jvs->poll_time(0);                                                     // coins
         if (vpos < 72) { pin_low = 1; g_h8->set_irq_pin(1, true); sync(base + LINE / 2); pin_low = 0; g_h8->set_irq_pin(1, false); sync(base + LINE); }
-        else sync(base + LINE);
+        else {                  // no per-line work until the next edge (line 480 or the end of the frame): up to 16 lines at once
+            const unsigned edge = vpos < 480 ? 480 : 525, k = std::min(16u, std::max(1u, edge - vpos));
+            sync(base + LINE * k);
+        }
     }
     return nullptr;
 }

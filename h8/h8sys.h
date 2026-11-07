@@ -124,7 +124,11 @@ public:
         return m;
     }
     // the peripherals (timers, serial, ADC) advance in blocks; before every register access the delay is caught up
+#if defined(__3DS__) || defined(S23_LIGHT_H8)
+    static constexpr uint64_t TICK_Q = 128; uint64_t pend_ = 0;  // 3DS: fewer peripheral updates (7.5 us), the H8 must fit in core 1
+#else
     static constexpr uint64_t TICK_Q = 32; uint64_t pend_ = 0;
+#endif
     uint32_t* pcprof_ = getenv("S23_H8PROF") ? new uint32_t[0x80000]() : nullptr; uint64_t pccyc_[2] = {0, 0};   // instruction count per address (analysis)
     void dump_prof(const char* path) { if (!pcprof_) return; FILE* f = fopen(path, "w"); if (!f) return; for (uint32_t a = 0; a < 0x80000; a++) if (pcprof_[a]) fprintf(f, "%06x %u\n", a, pcprof_[a]); fclose(f); }
     void flush_tick() { if (pend_) { uint64_t d = pend_; pend_ = 0; tick(d); } }
@@ -142,6 +146,7 @@ public:
     }
     uint16_t r16(uint32_t a) override {
         a &= 0xffffff; if (a < 0x7ffff && !rom.empty()) return (uint16_t)((rom[a] << 8) | rom[a + 1]);   // ROM: fast path
+        if (a >= 0xfffd10 && a < 0xffff0f) return (uint16_t)((ram[a - 0xfffd10] << 8) | ram[a - 0xfffd0f]);   // internal RAM
         return (r8(a) << 8) | r8(a + 1);
     }
     void w8(uint32_t a, uint8_t v) override {
