@@ -58,10 +58,9 @@ inline const uint8_t* map_file(const std::string& p, size_t& n) {
     if (sz <= 0) { fclose(f); return nullptr; }
 #ifdef __3DS__
     // 3DS: the normal heap is at most 96 MB; the remaining memory is "linear": the files that fit go there
-    uint8_t* v = linearSpaceFree() > (u32)sz + (3u << 20) ? (uint8_t*)linearAlloc((size_t)sz) : nullptr;
-    bool lin = v != nullptr;
-    if (lin) printf("asset %s: in linear memory\n", p.c_str()); else v = (uint8_t*)malloc((size_t)sz);
-    if (!v && linearSpaceFree() > (u32)sz) { v = (uint8_t*)linearAlloc((size_t)sz); lin = v != nullptr; }   // last try, without margin
+    // the normal heap first: linear memory is better spent on texture atlases (more atlases = fewer polygons dropped)
+    uint8_t* v = (uint8_t*)malloc((size_t)sz); bool lin = false;
+    if (!v && linearSpaceFree() > (u32)sz + (1u << 20)) { v = (uint8_t*)linearAlloc((size_t)sz); lin = v != nullptr; if (lin) printf("asset %s: in linear memory\n", p.c_str()); }
     if (!v) { printf("asset %s: %ld bytes, no memory (heap and linear memory full)\n", p.c_str(), sz); fclose(f); return nullptr; }
 #else
     uint8_t* v = (uint8_t*)malloc((size_t)sz); if (!v) { fclose(f); return nullptr; }
