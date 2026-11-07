@@ -566,10 +566,12 @@ static int zclip(int n, const PV* v, PV* out, float clipval) {
 
 // m: the model's matrix, already transposed if the model asks for it (model_matrix: once per model)
 static void model_matrix(const Entry& re, s16* m) { memcpy(m, re.model.m, sizeof(s16) * 9); if (re.model.transpose) transpose(m); }
+// the sum >> 14 always fits in 32 bits (|m| < 2^15, |xi| < 2^23): converting it as s32 is the same value, and on ARM11
+// it is one VFP instruction instead of a library call (64-bit integer -> float)
 static void apply_transform(s32 xi, s32 yi, s32 zi, const Entry& re, const s16* m, float& x, float& y, float& z) {
-    x = (((m[0] * (s64)xi + m[1] * (s64)yi + m[2] * (s64)zi) >> 14) * re.model.scaling + re.model.v[0]) / 16384.f;
-    y = (((m[3] * (s64)xi + m[4] * (s64)yi + m[5] * (s64)zi) >> 14) * re.model.scaling + re.model.v[1]) / 16384.f;
-    z = (((m[6] * (s64)xi + m[7] * (s64)yi + m[8] * (s64)zi) >> 14) * re.model.scaling + re.model.v[2]) / 16384.f;
+    x = ((s32)(((m[0] * (s64)xi + m[1] * (s64)yi + m[2] * (s64)zi) >> 14)) * re.model.scaling + re.model.v[0]) / 16384.f;
+    y = ((s32)(((m[3] * (s64)xi + m[4] * (s64)yi + m[5] * (s64)zi) >> 14)) * re.model.scaling + re.model.v[1]) / 16384.f;
+    z = ((s32)(((m[6] * (s64)xi + m[7] * (s64)yi + m[8] * (s64)zi) >> 14)) * re.model.scaling + re.model.v[2]) / 16384.f;
 }
 // rotation of normals and light: same matrix as the vertices (transposed if the model asks for it). For the light of the
 // C435 (dot product) doesn't change anything, but the normal and the light in camera space are needed for reflection and shadows.
@@ -670,9 +672,12 @@ static void make_model(const Entry& re, Frame& F) {
             if (re.mirror_x) for (int k = 0; k < 4 && k < ne; k++) pv[k].x *= -1.0f;
         } else { if (last) break; continue; }
         (lmode == 3 ? g_lm3 : g_lmo)++; g_lmc[lmode]++;
-        Poly P; P.index = (int)F.polys.size();
+        const int pidx = (int)F.polys.size();
+        Poly& P = F.polys.emplace_back();                              // built in place (no 500-byte copy per polygon)
+        P.index = pidx;
         P.nv = zclip(ne, pv, P.pv, 0.0001f);
-        if (P.nv >= 3) {
+        if (P.nv < 3) F.polys.pop_back();
+        else {
             P.rd.intensity_base = P.pv[0].p[3]; float minz = FLT_MAX, maxz = FLT_MIN;
             for (int i = 0; i < P.nv; i++) {
                 float z = P.pv[i].p[0] != 0 ? P.pv[i].p[0] : 1.f;
@@ -680,7 +685,7 @@ static void make_model(const Entry& re, Frame& F) {
                 project(P.pv[i], re.vp_sx, re.vp_sy, re.fov);
                 float w = P.pv[i].p[0]; P.pv[i].p[1] *= w; P.pv[i].p[2] *= w; P.pv[i].p[3] = (P.pv[i].p[3] - P.rd.intensity_base) * w;
             }
-            if (maxz < 0) { if (last) break; continue; }
+            if (maxz < 0) { F.polys.pop_back(); if (last) break; continue; }
 
             int zsort = 0;
             switch (h & 0x300) { case 0x000: zsort = (int)(minz + 0.5f); break; case 0x100: zsort = (int)(maxz + 0.5f); break; case 0x200: if (zalt) { zsort = (int)(maxz + 0.5f); break; } default: zsort = (int)(0.5f * (minz + maxz) + 0.5f); }
@@ -699,7 +704,6 @@ static void make_model(const Entry& re, Frame& F) {
             fill_fades(P.rd, re, color);
             P.rd.alpha_enabled = ((color & 0x7f) != re.alpha_color) || ((type >> 21) & 1);
             P.rd.blend = (h >> 10) & 1;
-            F.polys.push_back(P);
         }
         if (last) break;
     }
@@ -982,14 +986,18 @@ static void prepare(const std::vector<Entry>& list, Frame& F, std::vector<int>& 
     stat_polys += (unsigned)F.polys.size();
     static const bool imstat = getenv("S23_IMSTAT") != nullptr;
     if (imstat) { int ni = 0, nm = 0; for (const Entry& re : list) { ni += re.type == IMMEDIATE; nm += re.type == MODEL; } static int fc = 0; fc++; if (ni) printf("IMS f=%d im=%d models=%d\n", fc, ni, nm); }
-    order.resize(F.polys.size()); for (size_t i = 0; i < order.size(); i++) order[i] = (int)i;
-    std::sort(order.begin(), order.end(), [&](int a, int b) { const Poly &p = F.polys[a], &q = F.polys[b]; // Every end-of-list command closes a segment; the cabinet draws the segments from last to first
+    // sorted on a compact copy of the keys: comparing inside F.polys (500 bytes per polygon) missed the cache at every step
+    struct SK { int seg, zkey, index, i; };
+    static thread_local std::vector<SK> keys; keys.resize(F.polys.size());
+    for (size_t i = 0; i < keys.size(); i++) { const Poly& p = F.polys[i]; keys[i] = {p.seg, p.zkey, p.index, (int)i}; }
+    std::sort(keys.begin(), keys.end(), [&](const SK& p, const SK& q) { // Every end-of-list command closes a segment; the cabinet draws the segments from last to first
         // (e.g. desert: scenery, then captions, then characters; star: star, then captions on top). MAME merges them.
         if (seg_mode == 1 && (p.seg == 1) != (q.seg == 1)) return q.seg == 1;
         if (seg_mode == 3) { auto rk = [](int sg) { return sg == 1 ? 2 : sg == 0 ? 0 : 1; }; int rp = rk(p.seg), rq = rk(q.seg); if (rp != rq) return rp < rq; }
         if (seg_mode == 3 && p.seg != q.seg) return p.seg < q.seg;                 // test: later segments on top
         if (seg_mode == 2) { int pp = p.zkey >> 21, qp = q.zkey >> 21; if (pp != qp) return pp > qp; if (p.seg != q.seg) return p.seg > q.seg; }
         return p.zkey != q.zkey ? p.zkey > q.zkey : p.index < q.index; });
+    order.resize(keys.size()); for (size_t i = 0; i < keys.size(); i++) order[i] = keys[i].i;
 }
 static std::atomic<uint32_t> t_prep_us{0}; static std::atomic<uint32_t> n_polys{0};   // statistics for the indicator (geometry, polygons)
 static void draw_list(const std::vector<Entry>& list, const u32* pal, u32* fb, bool layer3d, int W = 640, int H = 480, double scale = 1.0, int xoff = 0) {

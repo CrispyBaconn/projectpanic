@@ -113,9 +113,10 @@ public:
             // level of detail: if a pixel covers many texels (distant or very oblique polygon) the cell takes one
             // texel every 1<<lvl (like an unfiltered mipmap): less memory and fewer cells, almost the same look
             int lvl = 0;
-            {   double sa = 0, ta = 0; const size_t n = poly.size();
-                for (size_t k = 0; k < n; k++) { const HV& A = poly[k]; const HV& B = poly[(k + 1) % n];
-                    sa += (double)(A.a[0] / A.a[2]) * (B.a[1] / B.a[2]) - (double)(B.a[0] / B.a[2]) * (A.a[1] / A.a[2]); ta += (double)A.a[3] * B.a[4] - (double)B.a[3] * A.a[4]; }
+            {   double sa = 0, ta = 0; const size_t n = poly.size(); float sx[48], sy[48];
+                for (size_t k = 0; k < n; k++) { sx[k] = poly[k].a[0] / poly[k].a[2]; sy[k] = poly[k].a[1] / poly[k].a[2]; }   // screen x, y: 2 divisions per vertex instead of 8
+                for (size_t k = 0; k < n; k++) { const size_t j = k + 1 < n ? k + 1 : 0; const HV& A = poly[k]; const HV& B = poly[j];
+                    sa += (double)sx[k] * sy[j] - (double)sx[j] * sy[k]; ta += (double)A.a[3] * B.a[4] - (double)B.a[3] * A.a[4]; }
                 sa = std::fabs(sa) * 0.5; ta = std::fabs(ta) * 0.5;
                 if (sa > 0.5 && ta > sa * 4) lvl = std::min(max_lvl, (int)std::floor(0.5 * std::log2(ta / sa) + lod_bias));
                 if (lvl < 0) lvl = 0; }
@@ -164,7 +165,7 @@ private:
             if (in) return; }
         PolyV o;
         for (size_t k = 0; k < p.size(); k++) {
-            const HV& A = p[k]; const HV& B = p[(k + 1) % p.size()];
+            const HV& A = p[k]; const HV& B = p[k + 1 < p.size() ? k + 1 : 0];
             const float fa = f(A), fb = f(B);
             if (fa >= 0) o.push_back(A);
             if ((fa >= 0) != (fb >= 0)) { const float t = fa / (fa - fb); HV C; for (int q = 0; q < 6; q++) C.a[q] = A.a[q] + t * (B.a[q] - A.a[q]); o.push_back(C); }
@@ -182,7 +183,7 @@ private:
             auto f = [&](const HV& h) { float v = h.a[0] - M * h.a[1] - K * h.a[2]; return left ? v : -v; };
             PolyV o;
             for (size_t q = 0; q < p.size(); q++) {
-                const HV& A = p[q]; const HV& B = p[(q + 1) % p.size()]; const float fa = f(A), fb = f(B);
+                const HV& A = p[q]; const HV& B = p[q + 1 < p.size() ? q + 1 : 0]; const float fa = f(A), fb = f(B);
                 if (fa >= 0) o.push_back(A);
                 if ((fa >= 0) != (fb >= 0)) { const float t = fa / (fa - fb); HV C; for (int z = 0; z < 6; z++) C.a[z] = A.a[z] + t * (B.a[z] - A.a[z]); o.push_back(C); }
             }
@@ -219,8 +220,11 @@ private:
             v.r = ch(rd.pcr); v.g = ch(rd.pcg); v.b = ch(rd.pcb); v.a = cur_alpha_all ? b.ca : 255;   // see the combiner
             return v;
         };
-        const V v0 = mk(c[0]);
-        for (size_t k = 1; k + 1 < c.size(); k++) { verts.push_back(v0); verts.push_back(mk(c[k])); verts.push_back(mk(c[k + 1])); batches.back().count += 3; st.tris++; }
+        // every vertex converted once, then the fan written straight into the array
+        const int nv = (int)c.size(); V vv[48]; for (int k = 0; k < nv; k++) vv[k] = mk(c[k]);
+        const size_t base = verts.size(), nt = (size_t)(nv - 2); verts.resize(base + 3 * nt); V* o = verts.data() + base;
+        for (int k = 1; k + 1 < nv; k++) { *o++ = vv[0]; *o++ = vv[k]; *o++ = vv[k + 1]; }
+        batches.back().count += (int)(3 * nt); st.tris += (unsigned)nt;
     }
     void check_stencil() {
         const uint16_t* s = g3d::C.c412_sram; const size_t n = sizeof g3d::C.c412_sram / sizeof(uint16_t);
