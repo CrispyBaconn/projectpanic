@@ -50,18 +50,30 @@ public:
     }
     bool set_wave(const uint8_t* p, size_t n) { wave = (p && n >= 0x1000000) ? p : nullptr; return wave != nullptr; }
 #ifdef __3DS__
-    // 3DS: the samples (16 MB) stay on the SD card, read in 4 KB pages with a 1 MB cache (15 MB less RAM)
-    FILE* wf = nullptr; uint8_t* wpage = nullptr; uint32_t wtag[256];
+    // 3DS: the samples (16 MB) stay on the SD card, read in 16 KB pages into a 4 MB cache (12 MB less RAM).
+    // 8-way set associative with LRU: with the old direct-mapped 1 MB cache two voices whose samples were 1 MB apart
+    // evicted each other at every byte, and every miss is an SD read in the H8 thread (sound and inputs stopped).
+    static constexpr int PSHIFT = 14, PSIZE = 1 << PSHIFT, SETS = 32, WAYS = 8;
+    FILE* wf = nullptr; uint8_t* wpage = nullptr; uint32_t wtag[SETS * WAYS], wuse[SETS * WAYS], wclock = 0; uint32_t misses = 0;
     bool set_wave_file(FILE* f) {
         if (!f) return false; fseek(f, 0, SEEK_END); if (ftell(f) < 0x1000000) { fclose(f); return false; }
-        wpage = (uint8_t*)malloc(256 * 4096); if (!wpage) { fclose(f); return false; }
-        memset(wtag, 0xff, sizeof wtag); wf = f; static const uint8_t one = 0; wave = &one; return true;
+        wpage = (uint8_t*)malloc((size_t)SETS * WAYS * PSIZE); if (!wpage) { fclose(f); return false; }
+        setvbuf(f, nullptr, _IONBF, 0);                          // whole pages: no stdio buffer in between
+        memset(wtag, 0xff, sizeof wtag); memset(wuse, 0, sizeof wuse); wf = f; static const uint8_t one = 0; wave = &one; return true;
     }
     uint8_t wave_byte(uint32_t a) {
         if (!wf) return wave[a];
-        const uint32_t page = a >> 12, slot = page & 255;
-        if (wtag[slot] != page) { fseek(wf, (long)page << 12, SEEK_SET); if (fread(wpage + slot * 4096, 1, 4096, wf) != 4096) memset(wpage + slot * 4096, 0, 4096); wtag[slot] = page; }
-        return wpage[slot * 4096 + (a & 4095)];
+        const uint32_t page = a >> PSHIFT, set = page & (SETS - 1); const int b = (int)set * WAYS;
+        int w = 0;
+        for (; w < WAYS; w++) if (wtag[b + w] == page) break;
+        if (w == WAYS) {                                         // miss: least recently used way of the set
+            w = 0; for (int k = 1; k < WAYS; k++) if (wuse[b + k] < wuse[b + w]) w = k;
+            uint8_t* d = wpage + (size_t)(b + w) * PSIZE;
+            fseek(wf, (long)page << PSHIFT, SEEK_SET); if (fread(d, 1, PSIZE, wf) != (size_t)PSIZE) memset(d, 0, PSIZE);
+            wtag[b + w] = page; misses++;
+        }
+        wuse[b + w] = ++wclock;
+        return wpage[(size_t)(b + w) * PSIZE + (a & (PSIZE - 1))];
     }
 #else
     uint8_t wave_byte(uint32_t a) const { return wave[a]; }
