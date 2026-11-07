@@ -258,6 +258,11 @@ static void draw_game(const FrameIn& in, const g3d::Frame& F, const std::vector<
     env_color();
     if (gam_mul) { C3D_AlphaBlend(GPU_BLEND_ADD, GPU_BLEND_ADD, GPU_DST_COLOR, GPU_SRC_COLOR, GPU_ZERO, GPU_ONE); C3D_DrawArrays(GPU_TRIANGLES, ngam, 6); draws++; }   // dst * k (up to 2x)
     if (gam_add) { C3D_AlphaBlend(GPU_BLEND_ADD, GPU_BLEND_ADD, GPU_ONE, GPU_ONE, GPU_ZERO, GPU_ONE); C3D_DrawArrays(GPU_TRIANGLES, nadd, 6); draws++; }
+    // back to the state citro2d expects (it does not reset blending, alpha test or the extra combiner stages): with the
+    // gamma multiply left on, the bottom screen and the pause menu were drawn multiplied (dark, almost invisible)
+    C3D_AlphaBlend(GPU_BLEND_ADD, GPU_BLEND_ADD, GPU_SRC_ALPHA, GPU_ONE_MINUS_SRC_ALPHA, GPU_SRC_ALPHA, GPU_ONE_MINUS_SRC_ALPHA);
+    C3D_AlphaTest(false, GPU_ALWAYS, 0);
+    for (int i = 1; i < 6; i++) C3D_TexEnvInit(C3D_GetTexEnv(i));
     G.last_draws = draws; G.ms_submit = (now_ns() - tb1) / 1e6;
 }
 
