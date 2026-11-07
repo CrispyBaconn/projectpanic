@@ -51,10 +51,10 @@ public:
     }
     bool set_wave(const uint8_t* p, size_t n) { wave = (p && n >= 0x1000000) ? p : nullptr; return wave != nullptr; }
 #ifdef __3DS__
-    // 3DS: the samples (16 MB) stay on the SD card, read in 16 KB pages into a 4 MB cache (12 MB less RAM).
+    // 3DS: the samples (16 MB) stay on the SD card, read in 16 KB pages into a 2 MB cache (14 MB less RAM).
     // 8-way set associative with LRU: with the old direct-mapped 1 MB cache two voices whose samples were 1 MB apart
     // evicted each other at every byte, and every miss is an SD read in the H8 thread (sound and inputs stopped).
-    static constexpr int PSHIFT = 14, PSIZE = 1 << PSHIFT, SETS = 32, WAYS = 8;
+    static constexpr int PSHIFT = 14, PSIZE = 1 << PSHIFT, SETS = 16, WAYS = 8;
     FILE* wf = nullptr; uint8_t* wpage = nullptr; uint32_t wtag[SETS * WAYS], wuse[SETS * WAYS], wclock = 0; uint32_t misses = 0;
     bool set_wave_file(FILE* f) {
         if (!f) return false; fseek(f, 0, SEEK_END); if (ftell(f) < 0x1000000) { fclose(f); return false; }

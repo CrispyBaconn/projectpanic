@@ -966,7 +966,13 @@ static FILE* segdump = nullptr;           // if non-null, draw_list writes the s
 // builds the frame's polygons (models transformed, lit, projected) and their drawing order.
 // Used by the software renderer (draw_list) and by the GPU one (platform/gl3d.h).
 static void prepare(const std::vector<Entry>& list, Frame& F, std::vector<int>& order) {
-    F.polys.reserve(4096);
+#ifdef __3DS__
+    // 3DS: fixed room (no reallocation that would need old + new, ~7 MB, in the last free MB of the heap);
+    // the polygons beyond MAX_POLYS in a frame are not drawn
+    static constexpr size_t MAX_POLYS = 6000; F.polys.reserve(MAX_POLYS + 1000);
+#else
+    static constexpr size_t MAX_POLYS = 40000; F.polys.reserve(4096);
+#endif
     if (segdump) fprintf(segdump, "list: %zu entries, segment mode %d\n", list.size(), seg_mode);
     for (const Entry& re : list) {
         size_t first = F.polys.size();
@@ -981,7 +987,7 @@ static void prepare(const std::vector<Entry>& list, Frame& F, std::vector<int>& 
         if (segdump) { static const Entry* lastc = nullptr; if (re.type == MODEL && (!lastc || memcmp(lastc->clip, re.clip, sizeof re.clip) != 0 || &re == &list.front())) { lastc = &re; fprintf(segdump, "  CLIP slant=%d:", re.slant); for (int k = 0; k < 24; k++) fprintf(segdump, " %.4g", re.clip[k]); fprintf(segdump, "\n"); } }
         if (segdump) { int zmin = 1 << 30, zmax = -1; for (size_t k = first; k < F.polys.size(); k++) { int z = F.polys[k].zkey & 0x1fffff; zmin = std::min(zmin, z); zmax = std::max(zmax, z); }
             fprintf(segdump, "seg=%d type=%d model=%04x pri=%d polygons=%zu z=%d..%d tz=%d vp=%d,%d,%d,%d fov=%g tv=%d,%d\n", re.seg, re.type, re.type == MODEL ? re.model.model : 0, F.polys.size() > first ? F.polys[first].zkey >> 21 : -1, F.polys.size() - first, zmin, zmax, re.type == MODEL ? (int)re.model.v[2] : 0, re.vp_sx, re.vp_sy, re.vp_ox, re.vp_oy, re.fov, re.type == MODEL ? (int)re.model.v[0] : 0, re.type == MODEL ? (int)re.model.v[1] : 0); }
-        if (F.polys.size() > 40000) break;
+        if (F.polys.size() > MAX_POLYS) break;
     }
     stat_polys += (unsigned)F.polys.size();
     static const bool imstat = getenv("S23_IMSTAT") != nullptr;

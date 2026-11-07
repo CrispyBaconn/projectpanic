@@ -73,6 +73,7 @@ public:
     void init(Backend* b, int slots) {
         be = b; nslots = slots; slot_key.assign(slots, Key{}); slot_valid.assign(slots, 0); slot_used.assign(slots, 0); slot_born.assign(slots, 0);
         pal_prev.assign(0x8000, 0xffffffffu); pal_stamp.assign(128, 0); map.clear(); frame = 1; sten_stamp = 0;
+        verts.reserve(26000); batches.reserve(2048); map.reserve(slots * 2);   // room once: no reallocations while playing
     }
 
     // W x H: target area (pixels), sc: scale relative to 640x480, xoff/yoff: offset (e.g. 40,0 for 320x240 inside 400x240)
