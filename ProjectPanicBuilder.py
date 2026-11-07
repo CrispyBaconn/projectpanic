@@ -512,8 +512,8 @@ class Worker(threading.Thread):
                         if not self.pip(i, 'elftools', 'pyelftools'): raise RuntimeError(self.t['no_elftools'])
                         ok = self.run_cmd([sys.executable, 'mips2cpp.py', '--elf', 'panicprk_main.elf',
                                            '--funcs', 'functions.csv', '--out', 'gen_full'], i) == 0
-                        if ok and os.path.isfile(os.path.join(ROOT, 'platform', 'ui', 'icon.png')):
-                            # app icons for every device from platform/ui/icon.png (needs Pillow)
+                        if ok:
+                            # app icons for every device from platform/ui/icon.png, or the repository's icon (needs Pillow)
                             if self.pip(i, 'PIL', 'pillow'): self.run_cmd([sys.executable, 'tools/make_icons.py'], i)
                     else:
                         script = next(d[2] for d in DEVICES if d[0] == key)
@@ -561,7 +561,9 @@ class App:
         st.configure('S.Horizontal.TProgressbar', troughcolor='#0a1f45', background=GRN, bordercolor=PANEL,
                      lightcolor=GRN, darkcolor=GRN, thickness=8)
         try:                                                 # window icon: your platform/ui/icon.png, if you have it
-            self.icon = tk.PhotoImage(file=os.path.join(ROOT, 'platform', 'ui', 'icon.png')); root.iconphoto(True, self.icon)
+            ic = os.path.join(ROOT, 'platform', 'ui', 'icon.png')
+            if not os.path.isfile(ic): ic = os.path.join(ROOT, 'platform', 'icon_default.png')
+            self.icon = tk.PhotoImage(file=ic); root.iconphoto(True, self.icon)
         except Exception: pass
         self.build_ui(); self.refresh_texts(); self.poll()
         root.protocol('WM_DELETE_WINDOW', self.on_close)

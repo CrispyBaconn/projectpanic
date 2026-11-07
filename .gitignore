@@ -44,5 +44,6 @@ panicprkrom/
 .rom_extract/
 tools/llvm-mingw-*/
 !docs/*.png
+!platform/icon_default.png
 build_icons/
 switch/icon.jpg

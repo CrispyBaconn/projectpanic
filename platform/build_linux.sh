@@ -5,7 +5,7 @@
 # Variables: OPT (default -O2), JOBS (parallel compilations, default = number of cores)
 set -e
 cd "$(dirname "$0")/.."
-python3 tools/make_icons.py || true                  # app icons from platform/ui/icon.png (if you have it)
+python3 tools/make_icons.py || true                  # app icons from platform/ui/icon.png (yours, or the repository one)
 CXX=${CXX:-g++}; OPT=${OPT:--O2}; BD=build_linux; OUT=dist/linux
 JOBS=${JOBS:-$(nproc 2>/dev/null || echo 2)}
 command -v sdl2-config >/dev/null 2>&1 || { echo "SDL2 missing: sudo apt install libsdl2-dev"; exit 1; }

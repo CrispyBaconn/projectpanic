@@ -5,7 +5,7 @@
 # Variables: JOBS (parallel compilations, default = number of cores), OPT (default -O2)
 set -e
 cd "$(dirname "$0")/.."
-if command -v python3 >/dev/null 2>&1; then python3 tools/make_icons.py || true; fi   # app icons from platform/ui/icon.png (if you have it)
+if command -v python3 >/dev/null 2>&1; then python3 tools/make_icons.py || true; fi   # app icons from platform/ui/icon.png (yours, or the repository one)
 # a build folder made from another path (WSL /mnt/c/... vs the devkitPro bash /c/...) has dependency files that point
 # to the old path: make would stop with "No rule to make target"; start again from clean
 if [ -d build_switch ] && [ "$(cat build_switch/.srcdir 2>/dev/null)" != "$(pwd)" ]; then rm -rf build_switch; fi

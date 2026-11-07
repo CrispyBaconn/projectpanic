@@ -45,10 +45,10 @@ Settings → Game → Menu language. To add a language, copy `en.json`, translat
 lack, run `python3 tools/bake_ui_font.py` (needs Pillow and `fonts-noto-cjk`). On 3DS, Chinese appears only on
 Chinese consoles, whose system font has the simplified characters.
 
-Optional: put your own square picture in `platform/ui/icon.png` and it becomes the icon everywhere: the Windows
-executable, the game and builder windows, Android, Switch, Wii U and 3DS (`tools/make_icons.py`, run by the builds,
-makes every size; it needs Pillow, which the builder installs by itself). Like the menu logo and background, the icon
-is not part of the repository.
+Icon: the repository has an original one (`platform/icon_default.png`, balloons, no game art) used everywhere: the
+Windows executable, the game and builder windows, Android, Switch, Wii U and 3DS (`tools/make_icons.py`, run by the
+builds, makes every size; it needs Pillow, which the builder installs by itself). To use another picture, put it in
+`platform/ui/icon.png`: like the menu logo and background, it stays on your computer and is not part of the repository.
 
 ## Manual build
 

@@ -5,7 +5,7 @@
 # Variables: OPT (default -O2), JOBS (parallel compilations, default = number of cores)
 set -e
 cd "$(dirname "$0")/.."
-python3 tools/make_icons.py || true                  # app icons from platform/ui/icon.png (if you have it)
+python3 tools/make_icons.py || true                  # app icons from platform/ui/icon.png (yours, or the repository one)
 CXX=${CXX:-x86_64-w64-mingw32-g++-posix}
 command -v $CXX >/dev/null 2>&1 || CXX=x86_64-w64-mingw32-g++
 command -v $CXX >/dev/null 2>&1 || { echo "MinGW-w64 missing: sudo apt install g++-mingw-w64-x86-64-posix"; exit 1; }

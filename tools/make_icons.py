@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
-"""Makes the app icons for every device from one picture: platform/ui/icon.png (your own copy, not in the repository).
+"""Makes the app icons for every device from one picture: platform/ui/icon.png (your own, not in the repository).
+Without it, the repository's original icon (platform/icon_default.png, made by tools/draw_default_icon.py) is copied
+there and used.
 
 Usage: python3 tools/make_icons.py        (needs Pillow: pip install pillow)
 Writes (all ignored by git):
@@ -8,14 +10,18 @@ Writes (all ignored by git):
   switch/icon.jpg                             Switch .nro (256x256 JPEG)
   wiiu/icon.png                               Wii U .wuhb (128x128)
   3ds/icon.png                                3DS .smdh (48x48)
-The build scripts use them when they exist; without platform/ui/icon.png nothing changes.
+The build scripts use them when they exist.
 """
 import os, sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SRC = os.path.join(ROOT, 'platform', 'ui', 'icon.png')
+DEFAULT = os.path.join(ROOT, 'platform', 'icon_default.png')
 
 def main():
+    if not os.path.isfile(SRC) and os.path.isfile(DEFAULT):     # no icon of yours: the repository's one
+        import shutil; os.makedirs(os.path.dirname(SRC), exist_ok=True); shutil.copy(DEFAULT, SRC)
+        print('platform/ui/icon.png: copied from platform/icon_default.png')
     if not os.path.isfile(SRC):
         print('no platform/ui/icon.png: default icons'); return 0
     try:
