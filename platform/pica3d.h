@@ -248,7 +248,9 @@ private:
             for (int s = a0; s < a1; s++) { if (!slot_valid[s]) { best = s; break; } if (slot_used[s] + 1 < frame && slot_used[s] < bu) { bu = slot_used[s]; best = s; } }
             bu = 0xffffffffu;
         }
-        if (best < 0) for (int s = 0; s < nslots; s++) { if (!slot_valid[s]) { best = s; break; } if (slot_used[s] != frame && slot_used[s] < bu) { bu = slot_used[s]; best = s; } }
+        // never a cell used by the previous frame if possible: with the 3DS pipeline the GPU may still be drawing it
+        if (best < 0) for (int s = 0; s < nslots; s++) { if (!slot_valid[s]) { best = s; break; } if (slot_used[s] + 1 < frame && slot_used[s] < bu) { bu = slot_used[s]; best = s; } }
+        if (best < 0) for (int s = 0; s < nslots; s++) { if (slot_used[s] != frame && slot_used[s] < bu) { bu = slot_used[s]; best = s; } }
         if (best < 0) return -1;
         if (slot_valid[best]) { map.erase(slot_key[best]); st.evicted++; }
         slot_key[best] = k; slot_valid[best] = 1; map[k] = best;

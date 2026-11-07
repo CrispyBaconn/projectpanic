@@ -202,14 +202,19 @@ static void upload_text(const uint32_t* txl) {
     for (int y = 0; y < 240; y++) { const uint32_t* r = txl + (size_t)(y * 2) * 640; for (int x = 0; x < 320; x++) { const uint32_t c = r[x * 2]; d[tex_off(x, y, 512)] = c ? rgba5551(((c & 0xffffff) << 8) | 0xff) : 0; } }
 }
 
-// draws a game frame on the top screen (call after C3D_FrameBegin)
-// in: data gathered from the video memories; F/order: prepared geometry (g3d::prepare)
-static void draw_game(const FrameIn& in, const g3d::Frame& F, const std::vector<int>& order, bool text_new, pica::Stats& st) {
+// CPU part of a game frame: cells, vertices and texture cells (call BEFORE C3D_FrameBegin, so it runs while the GPU is
+// still drawing the previous frame and while citro3d would only wait for the vblank)
+static void build_game(const FrameIn& in, const g3d::Frame& F, const std::vector<int>& order, pica::Stats& st) {
     const float X0 = 40, Y0 = 0, SC = 0.5f;            // 640x480 -> 320x240 centred
     const uint64_t tb0 = now_ns();
     if (in.have3d) G.pr.build(F, order, in.pal3d.data(), SC, X0, Y0, 360.f, 240.f); else { G.pr.verts.clear(); G.pr.batches.clear(); G.pr.st = pica::Stats{}; }
-    const uint64_t tb1 = now_ns(); G.ms_build = (tb1 - tb0) / 1e6;
+    G.ms_build = (now_ns() - tb0) / 1e6;
     st = G.pr.st;
+}
+// draws the game frame built by build_game on the top screen (call after C3D_FrameBegin)
+static void draw_game(const FrameIn& in, bool text_new) {
+    const float X0 = 40, Y0 = 0;
+    const uint64_t tb1 = now_ns();
     if (text_new) upload_text(in.txl.data());
     for (int c = 0; c < 3; c++) { const uint8_t* g = c == 0 ? in.gr : c == 1 ? in.gg : in.gb; pica::gamma_fit(g, G.k[c], G.b[c]); }
     // vertices: [background] [3D] [text] [gamma]
@@ -483,14 +488,18 @@ static void run() {
             emu_pause(false); if (r == 1) break;
             continue;
         }
-        const uint64_t w0 = now_ns();
-        C3D_FrameBegin(C3D_FRAME_SYNCDRAW); C2D_TextBufClear(G.tbuf);
+        // pipeline: the CPU prepares this frame while the GPU is still drawing the previous one; only then
+        // C3D_FrameBegin waits (end of the previous drawing + vblank) and the frame is submitted
         const uint64_t a = now_ns();
         gather(in); const uint64_t ag = now_ns(); F.polys.clear(); F.pal.clear(); order.clear(); if (in.have3d) g3d::prepare(in.lst, F, order);
         const uint64_t b = now_ns();
-        draw_game(in, F, order, in.txl_new, st);
-        acc_prep += (b - a) / 1e6; acc_gpu += (now_ns() - b) / 1e6;
-        acc_w += (a - w0) / 1e6; acc_g += (ag - a) / 1e6; acc_b += G.ms_build; acc_t += st.ms_tex; acc_s += G.ms_submit; acc_d += C3D_GetDrawingTime();
+        build_game(in, F, order, st);
+        const uint64_t w0 = now_ns();
+        C3D_FrameBegin(C3D_FRAME_SYNCDRAW); C2D_TextBufClear(G.tbuf);
+        const uint64_t w1 = now_ns();
+        draw_game(in, in.txl_new);
+        acc_prep += (b - a) / 1e6; acc_gpu += (now_ns() - b) / 1e6 - (w1 - w0) / 1e6;
+        acc_w += (w1 - w0) / 1e6; acc_g += (ag - a) / 1e6; acc_b += G.ms_build; acc_t += st.ms_tex; acc_s += G.ms_submit; acc_d += C3D_GetDrawingTime();
         draws_max = std::max(draws_max, G.last_draws); skip_tot += G.last_skipped;
         C2D_Prepare(); C2D_TargetClear(G.bot, col(12, 28, 66)); C2D_SceneBegin(G.bot);
         button(10, 160, 140, 70, T("touch_coin"), false, tp, false); button(170, 160, 140, 70, T("touch_menu"), false, tp, false);
