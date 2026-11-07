@@ -384,7 +384,7 @@ static OSThread* start_thread(ThreadFn fn, size_t stack, int core, int prio, con
 static OSThread* g_th_game = nullptr; static OSThread* g_th_h8 = nullptr;
 #elif defined(__3DS__)
 // 3DS: libctru thread on a specific core (0 = this one, 1 = system, limited to 80%, 2 = New 3DS only)
-static Thread g_t3[8]; static int g_t3n = 0; static int g_h8_core = 1;
+static Thread g_t3[8]; static int g_t3n = 0; static int g_h8_core = 1; static Thread g_h8_thr = nullptr;
 static void t3_entry(void* a) { ((ThreadFn)a)(nullptr); }
 static bool start_thread(ThreadFn fn, size_t stack, int core, int prio, const char*) {
     Thread t = threadCreate(t3_entry, (void*)fn, stack, prio ? prio : 0x30, core, false);
@@ -551,13 +551,14 @@ static uint64_t thread_cpu_ns() {                                     // CPU tim
 }
 static uint64_t thread_cpu_ns_fwd() { return thread_cpu_ns(); }
 static volatile double g_h8_pct = 100;                                 // H8 speed in the last second (on-screen indicator)
+static std::atomic<bool> g_h8_quit{false};                            // 3DS: the H8 thread ends (to restart it on another core)
 static void* h8_thread(void*) {
     block_timer_signals(true);
-    unsigned h8_lost = 0;
+    static unsigned h8_lost = 0;                                      // static: the state survives a move to another core
 #ifdef _WIN32
     SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_ABOVE_NORMAL);
 #endif
-    bool running = false; uint64_t t0 = 0, cyc0 = 0, acyc0 = 0; const uint64_t LINE = (uint64_t)(H8Sys::CLOCK / 59.9 / 525);
+    static bool running = false; static uint64_t t0 = 0, cyc0 = 0, acyc0 = 0; const uint64_t LINE = (uint64_t)(H8Sys::CLOCK / 59.9 / 525);
     const double ratio = AscaSys::CLOCK / H8Sys::CLOCK;
     static uint8_t pin_low = 0;
     g_h8->p8_in = [] { return (uint8_t)(0xff & ~(pin_low ? 0x02 : 0)); };
@@ -568,6 +569,7 @@ static void* h8_thread(void*) {
     if (g_jvs) g_jvs->on_tx = [](const std::vector<uint8_t>& v) { if (jvslog) for (uint8_t b : v) printf("JVS< %02x\n", b); g_h8->sci_push(0, v); };
     else g_asca->on_tx = [](uint8_t b) { if (jvslog) printf("JVS< %02x\n", b); g_h8->sci_push(0, {b}); };
     for (;;) {
+        if (g_h8_quit.load()) { g_h8_quit = false; return nullptr; }
         if (g_pause.load() && !g_exit_req) { sleep_ns(5000000); continue; }            // pause (in-game menu)
         int c = g_h8_cmd.exchange(0);
         if (c == 1) { g_h8->reset(); rtc_fill(); running = true; t0 = emu_ns(); cyc0 = g_h8->cpu.m_cycles; acyc0 = g_asca ? g_asca->cpu.m_cycles : 0; }
@@ -660,12 +662,24 @@ static void h8_start_thread(const std::string& dir) {
 #elif defined(__SWITCH__)
     start_thread(h8_thread, 2u << 20, 2, 0, "H8");                                         // core 2
 #elif defined(__3DS__)
-    if (!start_thread(h8_thread, 512u << 10, g_h8_core, 0x2f, "H8") && g_h8_core == 1) start_thread(h8_thread, 512u << 10, 0, 0x2f, "H8");   // core 1 (system, 80%) or 0
+    g_h8_thr = threadCreate(t3_entry, (void*)h8_thread, 512u << 10, 0x2f, g_h8_core, false);           // core 1 (system, 80%) or 0
+    if (!g_h8_thr && g_h8_core == 1) { g_h8_core = 0; g_h8_thr = threadCreate(t3_entry, (void*)h8_thread, 512u << 10, 0x2f, 0, false); }
 #else
     start_thread(h8_thread, 16u << 20, 0, 0, "H8");
 #endif
     printf("Real H8/3002 + ASCA-3A: firmware loaded from %s\n", dir.c_str());
 }
+#ifdef __3DS__
+// moves the H8 to another core: the thread ends (its state is static) and starts again there
+static bool h8_move_core(int core) {
+    if (!g_h8_thr || core == g_h8_core) return false;
+    g_h8_quit = true; threadJoin(g_h8_thr, 2000000000ull); threadFree(g_h8_thr); g_h8_quit = false;
+    g_h8_thr = threadCreate(t3_entry, (void*)h8_thread, 512u << 10, 0x2f, core, false);
+    if (!g_h8_thr) g_h8_thr = threadCreate(t3_entry, (void*)h8_thread, 512u << 10, 0x2f, g_h8_core, false);
+    else g_h8_core = core;
+    printf("H8: moved to core %d\n", g_h8_core); fflush(stdout); return g_h8_thr != nullptr;
+}
+#endif
 #ifdef USE_SDL
 #include "frontend.h"
 #endif

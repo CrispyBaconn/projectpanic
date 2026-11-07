@@ -500,9 +500,18 @@ static void run() {
         if (n - t_last >= 1000000000ull) {
             const double el = (n - t_last) / 1e9; fps = frames / el; hz = (g_deliv_ip[2] - vbl_last) / el; ms_prep = acc_prep / frames; ms_gpu = acc_gpu / frames;
             static unsigned logn = 0;
+            const double r4650 = 100.0 * (1.0 - std::min(1.0, g_mips_idle_us.exchange(0) / (el * 1e6)));   // game core busy %
+            {   // the H8 (sound, I/O) needs its core: if it stays slow (system core 1 taken by the system in busy scenes),
+                // it moves once: to core 2 if the game leaves room there, otherwise to core 0 (above the drawing)
+                static int slow = 0, secs = 0; static bool moved = false; secs++;
+                slow = (g_h8_pct < 60 && secs > 8) ? slow + 1 : 0;
+                if (!moved && slow >= 3) { moved = true; const int to = r4650 < 65 ? 2 : 0;
+                    printf("H8: %.0f%% for 3 s on core %d (game core busy %.0f%%): moving it to core %d\n", (double)g_h8_pct, g_h8_core, r4650, to);
+                    h8_move_core(to); }
+            }
             ms_g = acc_g / frames; ms_b = acc_b / frames; ms_t = acc_t / frames; ms_s = acc_s / frames; ms_d = acc_d / frames; ms_w = acc_w / frames;
-            if (++logn % 5 == 0) { printf("PERF 3DS game %.1f Hz img %.1f/s H8 %.0f%% | gather %.1f geo %.1f cells %.1f (tex %.1f) submit %.1f GPU %.1f wait %.1f ms | polygons %u cells %u batches %u max draws %u new %u evicted %u dropped %u skipped %u commands %.0f%%\n",
-                hz, fps, (double)g_h8_pct, ms_g, ms_prep - ms_g, ms_b, ms_t, ms_s, ms_d, ms_w, st.polys, st.cells, st.batches, draws_max, st.new_slots, st.evicted, st.dropped, skip_tot, C3D_GetCmdBufUsage() * 100.f); fflush(stdout); draws_max = 0; skip_tot = 0; }
+            if (++logn % 5 == 0) { printf("PERF 3DS game %.1f Hz img %.1f/s H8 %.0f%% (core %d) R4650 busy %.0f%% | gather %.1f geo %.1f cells %.1f (tex %.1f) submit %.1f GPU %.1f wait %.1f ms | polygons %u cells %u batches %u max draws %u new %u evicted %u dropped %u skipped %u commands %.0f%%\n",
+                hz, fps, (double)g_h8_pct, g_h8_core, r4650, ms_g, ms_prep - ms_g, ms_b, ms_t, ms_s, ms_d, ms_w, st.polys, st.cells, st.batches, draws_max, st.new_slots, st.evicted, st.dropped, skip_tot, C3D_GetCmdBufUsage() * 100.f); fflush(stdout); draws_max = 0; skip_tot = 0; }
             frames = 0; acc_prep = acc_gpu = 0; acc_g = acc_b = acc_t = acc_s = acc_d = acc_w = 0; t_last = n; vbl_last = g_deliv_ip[2];
             nvram_save();
         }
