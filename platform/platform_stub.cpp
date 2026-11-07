@@ -1498,7 +1498,7 @@ int main(int argc, char** argv) {
     {   // everything lives in the app folder on the SD card (Wii U: wiiu/apps/panicprk/, Switch: switch/panicprk/), ROMs in panicprkrom/ or there
         const std::string D = S23_APP_DIR;
 #ifdef __3DS__
-        osSetSpeedupEnable(true); const Result rl = APT_SetAppCpuTimeLimit(80);             // 804 MHz + L2 cache; core 1 at 80%
+        osSetSpeedupEnable(true); Result rl = APT_SetAppCpuTimeLimit(89); if (R_FAILED(rl)) rl = APT_SetAppCpuTimeLimit(80);   // 804 MHz + L2 cache; as much of core 1 as allowed
 #endif
         freopen((D + "/log.txt").c_str(), "w", stdout); setvbuf(stdout, nullptr, _IOFBF, 1 << 16);
 #ifdef __3DS__

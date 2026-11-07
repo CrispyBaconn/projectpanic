@@ -124,6 +124,11 @@ public:
     static void ramp(Voice& x, int ch, uint8_t val) { int d = x.curr_vol[ch] - val; if (d) x.curr_vol[ch] += d > 0 ? -1 : 1; }
 
     void one_sample() {
+#ifdef __3DS__
+        const bool mix = half == 1;           // 3DS: the voices advance at 88200 Hz but are mixed one step in two (44100 Hz,
+#else                                         // the output rate anyway): the H8 thread must fit in 80% of the system core
+        const bool mix = true;
+#endif
         int o[4] = {0, 0, 0, 0};
         for (auto& x : v) {
             if (!(x.flags & BUSY)) continue;                         // stopped voice: no contribution (current volumes restart from 0 at key on)
@@ -133,6 +138,7 @@ public:
                 if (next & 0x10000) fetch(x);
                 if ((next ^ (int32_t)x.counter) & 0x18000) { ramp(x, 0, x.vol_f >> 8); ramp(x, 1, x.vol_f & 0xff); ramp(x, 2, x.vol_r >> 8); ramp(x, 3, x.vol_r & 0xff); }
                 x.counter = (uint32_t)next & 0xffff;
+                if (!mix) continue;
                 s = x.sample;
                 if (!(x.flags & FILTER)) s = x.last_sample + (int)(((int64_t)x.counter * (x.sample - x.last_sample)) >> 16);
             }
@@ -144,12 +150,16 @@ public:
         // like MAME: outputs 0/2 left, 1/3 right, each saturated to 16 bits after >>3
         auto sat = [](int a) { return a < -32768 ? -32768 : a > 32767 ? 32767 : a; };
         int l = sat(o[0] >> 3) + sat(o[2] >> 3), r = sat(o[1] >> 3) + sat(o[3] >> 3);
+#ifdef __3DS__
+        if (++half == 2) { half = 0; out.push_back((int16_t)sat(l)); out.push_back((int16_t)sat(r)); if (out.size() >= 1024) flush(); }
+#else
         acc_l += l; acc_r += r;
         if (++half == 2) {
             half = 0;
             out.push_back((int16_t)sat(acc_l / 2)); out.push_back((int16_t)sat(acc_r / 2)); acc_l = acc_r = 0;
             if (out.size() >= 1024) flush();
         }
+#endif
     }
     void flush() { if (sink && !out.empty()) sink(out.data(), out.size() / 2); out.clear(); }
 
