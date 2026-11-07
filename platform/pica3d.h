@@ -288,9 +288,12 @@ private:
 };
 
 // fits the final gamma table (C404) to a line g(x) = k*x + b per channel (on the GPU it is applied with blending)
+// The line goes exactly through g(0): black stays black (a free least-squares line over a curved gamma table
+// had an offset > 0, so black became grey); the slope is the best one for the other values.
 inline void gamma_fit(const uint8_t* g, float& k, float& b) {
-    double sx = 0, sy = 0, sxx = 0, sxy = 0; for (int x = 0; x < 256; x++) { sx += x; sy += g[x]; sxx += (double)x * x; sxy += (double)x * g[x]; }
-    const double n = 256, d = n * sxx - sx * sx; k = (float)((n * sxy - sx * sy) / d); b = (float)((sy - k * sx) / n) / 255.f;
+    double sxx = 0, sxy = 0; const double g0 = g[0];
+    for (int x = 1; x < 256; x++) { sxx += (double)x * x; sxy += (double)x * (g[x] - g0); }
+    k = (float)(sxy / sxx); b = (float)(g0 / 255.0);
 }
 
 }  // namespace pica
