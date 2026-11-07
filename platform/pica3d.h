@@ -61,11 +61,12 @@ struct Backend {
     virtual SlotMap slot_map(int) const { return flip_t() ? SlotMap{0, 1, 1, -1} : SlotMap{0, 1, 0, 1}; }
 };
 
-struct Stats { unsigned polys = 0, tris = 0, batches = 0, new_slots = 0, cells = 0, dropped = 0, reloads = 0, evicted = 0; };
+struct Stats { unsigned polys = 0, tris = 0, batches = 0, new_slots = 0, cells = 0, dropped = 0, reloads = 0, evicted = 0; double ms_tex = 0; };
 
 class Renderer {
 public:
     int nslots = 0; int max_lvl = 4; float lod_bias = 0.f;
+    uint64_t (*clock_ns)() = nullptr;               // optional: time spent preparing textures (Stats::ms_tex)
     Backend* be = nullptr;
     std::vector<V> verts; std::vector<Batch> batches; Stats st;
 
@@ -253,6 +254,11 @@ private:
     // 16-apart) bytes of the texture ROM, so the tilemap is read once per tile row and the palette once per cell
     // (256-entry table already in the GPU format). Same result as g3d::tex_lookup texel by texel.
     void fill(int s, const Key& k) {
+        const uint64_t t0 = clock_ns ? clock_ns() : 0;
+        fill_(s, k);
+        if (clock_ns) st.ms_tex += (clock_ns() - t0) / 1e6;
+    }
+    void fill_(int s, const Key& k) {
         u32 pens = k.pens; int penmask = 0xff, penshift = 0;
         if (k.cmode & 4) { pens += 0xec + ((k.cmode & 8) << 1); penmask = 3; penshift = 2 * (~k.cmode & 3); }
         else if (k.cmode & 2) { pens += 0xe0 + ((k.cmode & 8) << 1); penmask = 0xf; penshift = 4 * (~k.cmode & 1); }

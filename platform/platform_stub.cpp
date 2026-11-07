@@ -384,7 +384,7 @@ static OSThread* start_thread(ThreadFn fn, size_t stack, int core, int prio, con
 static OSThread* g_th_game = nullptr; static OSThread* g_th_h8 = nullptr;
 #elif defined(__3DS__)
 // 3DS: libctru thread on a specific core (0 = this one, 1 = system, limited to 80%, 2 = New 3DS only)
-static Thread g_t3[8]; static int g_t3n = 0;
+static Thread g_t3[8]; static int g_t3n = 0; static int g_h8_core = 1;
 static void t3_entry(void* a) { ((ThreadFn)a)(nullptr); }
 static bool start_thread(ThreadFn fn, size_t stack, int core, int prio, const char*) {
     Thread t = threadCreate(t3_entry, (void*)fn, stack, prio ? prio : 0x30, core, false);
@@ -660,7 +660,7 @@ static void h8_start_thread(const std::string& dir) {
 #elif defined(__SWITCH__)
     start_thread(h8_thread, 2u << 20, 2, 0, "H8");                                         // core 2
 #elif defined(__3DS__)
-    start_thread(h8_thread, 512u << 10, 1, 0x2f, "H8");                                    // core 1 (system, 80%)
+    if (!start_thread(h8_thread, 512u << 10, g_h8_core, 0x2f, "H8") && g_h8_core == 1) start_thread(h8_thread, 512u << 10, 0, 0x2f, "H8");   // core 1 (system, 80%) or 0
 #else
     start_thread(h8_thread, 16u << 20, 0, 0, "H8");
 #endif
@@ -1484,9 +1484,15 @@ int main(int argc, char** argv) {
     {   // everything lives in the app folder on the SD card (Wii U: wiiu/apps/panicprk/, Switch: switch/panicprk/), ROMs in panicprkrom/ or there
         const std::string D = S23_APP_DIR;
 #ifdef __3DS__
-        osSetSpeedupEnable(true); APT_SetAppCpuTimeLimit(80);                               // 804 MHz + cache L2; core 1 all'80%
+        osSetSpeedupEnable(true); const Result rl = APT_SetAppCpuTimeLimit(80);             // 804 MHz + L2 cache; core 1 at 80%
 #endif
         freopen((D + "/log.txt").c_str(), "w", stdout); setvbuf(stdout, nullptr, _IOFBF, 1 << 16);
+#ifdef __3DS__
+        {   // the H8 (sound and I/O) goes on core 1 only if the system really gives us that core; otherwise on core 0,
+            // above the drawing (it sleeps whenever it is ahead, so the drawing gets the rest)
+            u32 lim = 0; APT_GetAppCpuTimeLimit(&lim); g_h8_core = (R_SUCCEEDED(rl) && lim >= 50) ? 1 : 0;
+            printf("3DS: core 1 time limit %lu%% (result %08lx): H8 on core %d\n", (unsigned long)lim, (unsigned long)rl, g_h8_core); }
+#endif
         setenv("S23_WINDOW", "1", 1);
         setenv("S23_ASSETS", (D + "/" S23_ASSETS_DEFAULT).c_str(), 0); setenv("S23_LANGDIR", (D + "/lang").c_str(), 0);
         setenv("S23_NVRAM", (D + "/nvram.bin").c_str(), 0);

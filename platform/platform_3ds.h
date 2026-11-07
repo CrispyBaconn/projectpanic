@@ -88,7 +88,7 @@ struct C3DBackend : pica::Backend {
         if (dirty.size() < tex.size()) dirty.resize(tex.size(), 0);
         dirty[s / PER] = 1;
     }
-    void flush() { for (size_t i = 0; i < dirty.size(); i++) if (dirty[i]) { GSPGPU_FlushDataCache(tex[i].data, tex[i].size); dirty[i] = 0; } }
+    void flush() { for (size_t i = 0; i < dirty.size(); i++) if (dirty[i]) { svcFlushProcessDataCache(CUR_PROCESS_HANDLE, (u32)tex[i].data, tex[i].size); dirty[i] = 0; } }   // kernel call: cheaper than the GSP one
 };
 
 // ---------------------------------------------------------------- drawing state
@@ -143,7 +143,7 @@ static bool init(const std::string& uidir) {
     Mtx_OrthoTilt(&G.proj, 0.f, 400.f, 240.f, 0.f, 0.f, 1.f, true);      // pixels with y at the bottom, z in [-w, 0]
     G.vmax = 26000; G.vbo = (pica::V*)linearAlloc(sizeof(pica::V) * G.vmax);
     int slots = G.be.init(192); if (slots <= 0) return false;      // 3 atlases of 1024x1024 (6 MB)
-    G.pr.init(&G.be, slots);
+    G.pr.init(&G.be, slots); G.pr.clock_ns = now_ns;
     G.text_ok = C3D_TexInit(&G.text, 512, 256, GPU_RGBA5551); if (G.text_ok) { C3D_TexSetFilter(&G.text, GPU_NEAREST, GPU_NEAREST); memset(G.text.data, 0, 512 * 256 * 2); }
     G.bg_ok = load_png_tex(uidir + "/background.png", G.bg, G.bg_st, 512, 256);
     G.logo_ok = load_png_tex(uidir + "/logo.png", G.logo, G.logo_st, 256, 256);
@@ -460,7 +460,7 @@ static void apply_lang() {
 static void run() {
     static FrameIn in; g3d::Frame F; std::vector<int> order; pica::Stats st;
     uint64_t t_last = now_ns(), vbl_last = g_deliv_ip[2]; unsigned frames = 0;
-    double hz = 0, fps = 0, acc_prep = 0, acc_gpu = 0, ms_prep = 0, ms_gpu = 0, acc_g = 0, acc_b = 0, acc_s = 0, acc_d = 0, acc_w = 0, ms_g = 0, ms_b = 0, ms_s = 0, ms_d = 0, ms_w = 0;
+    double hz = 0, fps = 0, acc_t = 0, ms_t = 0, acc_prep = 0, acc_gpu = 0, ms_prep = 0, ms_gpu = 0, acc_g = 0, acc_b = 0, acc_s = 0, acc_d = 0, acc_w = 0, ms_g = 0, ms_b = 0, ms_s = 0, ms_d = 0, ms_w = 0;
     unsigned draws_max = 0, skip_tot = 0;
     while (aptMainLoop()) {
         hidScanInput(); const u32 kd = hidKeysDown(), kh = hidKeysHeld(); touchPosition tp; hidTouchRead(&tp); const bool touched = (kd & KEY_TOUCH) != 0;
@@ -481,7 +481,7 @@ static void run() {
         const uint64_t b = now_ns();
         draw_game(in, F, order, in.txl_new, st);
         acc_prep += (b - a) / 1e6; acc_gpu += (now_ns() - b) / 1e6;
-        acc_w += (a - w0) / 1e6; acc_g += (ag - a) / 1e6; acc_b += G.ms_build; acc_s += G.ms_submit; acc_d += C3D_GetDrawingTime();
+        acc_w += (a - w0) / 1e6; acc_g += (ag - a) / 1e6; acc_b += G.ms_build; acc_t += st.ms_tex; acc_s += G.ms_submit; acc_d += C3D_GetDrawingTime();
         draws_max = std::max(draws_max, G.last_draws); skip_tot += G.last_skipped;
         C2D_Prepare(); C2D_TargetClear(G.bot, col(12, 28, 66)); C2D_SceneBegin(G.bot);
         button(10, 160, 140, 70, T("touch_coin"), false, tp, false); button(170, 160, 140, 70, T("touch_menu"), false, tp, false);
@@ -489,8 +489,8 @@ static void run() {
             char l[160];
             snprintf(l, sizeof l, "game %.1f Hz   images %.1f/s   H8 %.0f%%", hz, fps, (double)g_h8_pct); text(l, 8, 6, 0.45f, col(140, 255, 140));
             snprintf(l, sizeof l, "gather+geometry %.1f ms   GPU prep %.1f ms", ms_prep, ms_gpu); text(l, 8, 26, 0.45f, col(255, 220, 120));
-            snprintf(l, sizeof l, "polygons %u  batches %u  new slots %u  dropped %u", st.polys, st.batches, st.new_slots, st.dropped); text(l, 8, 46, 0.45f, col(200, 220, 255));
-            snprintf(l, sizeof l, "text %.1f  geo %.1f  cells %.1f  submit %.1f  GPU %.1f  wait %.1f ms", ms_g, ms_prep - ms_g, ms_b, ms_s, ms_d, ms_w); text(l, 8, 86, 0.42f, col(255, 200, 200));
+            snprintf(l, sizeof l, "polygons %u  cells %u  batches %u  new %u (evicted %u)", st.polys, st.cells, st.batches, st.new_slots, st.evicted); text(l, 8, 46, 0.45f, col(200, 220, 255));
+            snprintf(l, sizeof l, "text %.1f geo %.1f cells %.1f (tex %.1f) submit %.1f GPU %.1f wait %.1f", ms_g, ms_prep - ms_g, ms_b, ms_t, ms_s, ms_d, ms_w); text(l, 8, 86, 0.42f, col(255, 200, 200));
             snprintf(l, sizeof l, "CPU %.0f%%  GPU %.0f%%  commands %.0f%%", C3D_GetProcessingTime() * 6.f, C3D_GetDrawingTime() * 6.f, C3D_GetCmdBufUsage() * 100.f); text(l, 8, 66, 0.45f, col(200, 220, 255));
         }
         text(T("h3ds_help"), 160, 120, 0.42f, col(170, 185, 210), C2D_AlignCenter);
@@ -500,10 +500,10 @@ static void run() {
         if (n - t_last >= 1000000000ull) {
             const double el = (n - t_last) / 1e9; fps = frames / el; hz = (g_deliv_ip[2] - vbl_last) / el; ms_prep = acc_prep / frames; ms_gpu = acc_gpu / frames;
             static unsigned logn = 0;
-            ms_g = acc_g / frames; ms_b = acc_b / frames; ms_s = acc_s / frames; ms_d = acc_d / frames; ms_w = acc_w / frames;
-            if (++logn % 5 == 0) { printf("PERF 3DS game %.1f Hz img %.1f/s H8 %.0f%% | gather %.1f geo %.1f cells %.1f submit %.1f GPU %.1f wait %.1f ms | polygons %u batches %u max draws %u new %u dropped %u skipped %u commands %.0f%%\n",
-                hz, fps, (double)g_h8_pct, ms_g, ms_prep - ms_g, ms_b, ms_s, ms_d, ms_w, st.polys, st.batches, draws_max, st.new_slots, st.dropped, skip_tot, C3D_GetCmdBufUsage() * 100.f); fflush(stdout); draws_max = 0; skip_tot = 0; }
-            frames = 0; acc_prep = acc_gpu = 0; acc_g = acc_b = acc_s = acc_d = acc_w = 0; t_last = n; vbl_last = g_deliv_ip[2];
+            ms_g = acc_g / frames; ms_b = acc_b / frames; ms_t = acc_t / frames; ms_s = acc_s / frames; ms_d = acc_d / frames; ms_w = acc_w / frames;
+            if (++logn % 5 == 0) { printf("PERF 3DS game %.1f Hz img %.1f/s H8 %.0f%% | gather %.1f geo %.1f cells %.1f (tex %.1f) submit %.1f GPU %.1f wait %.1f ms | polygons %u cells %u batches %u max draws %u new %u evicted %u dropped %u skipped %u commands %.0f%%\n",
+                hz, fps, (double)g_h8_pct, ms_g, ms_prep - ms_g, ms_b, ms_t, ms_s, ms_d, ms_w, st.polys, st.cells, st.batches, draws_max, st.new_slots, st.evicted, st.dropped, skip_tot, C3D_GetCmdBufUsage() * 100.f); fflush(stdout); draws_max = 0; skip_tot = 0; }
+            frames = 0; acc_prep = acc_gpu = 0; acc_g = acc_b = acc_t = acc_s = acc_d = acc_w = 0; t_last = n; vbl_last = g_deliv_ip[2];
             nvram_save();
         }
     }
